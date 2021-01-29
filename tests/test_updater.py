@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2018
+# Copyright (C) 2015-2020
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,42 +16,62 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
+import asyncio
 import logging
 import os
 import signal
 import sys
+import threading
+from contextlib import contextmanager
+
+from flaky import flaky
 from functools import partial
 from queue import Queue
 from random import randrange
 from threading import Thread, Event
 from time import sleep
 
-try:
-    # python2
-    from urllib2 import urlopen, Request, HTTPError
-except ImportError:
-    # python3
-    from urllib.request import Request, urlopen
-    from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 import pytest
-from future.builtins import bytes
 
 from telegram import TelegramError, Message, User, Chat, Update, Bot
 from telegram.error import Unauthorized, InvalidToken, TimedOut, RetryAfter
-from telegram.ext import Updater
+from telegram.ext import Updater, Dispatcher, DictPersistence, Defaults
+from telegram.utils.deprecate import TelegramDeprecationWarning
+from telegram.utils.webhookhandler import WebhookServer
 
-signalskip = pytest.mark.skipif(sys.platform == 'win32',
-                                reason='Can\'t send signals without stopping '
-                                       'whole process on windows')
+signalskip = pytest.mark.skipif(
+    sys.platform == 'win32',
+    reason='Can\'t send signals without stopping ' 'whole process on windows',
+)
 
 
-class TestUpdater(object):
+ASYNCIO_LOCK = threading.Lock()
+
+
+@contextmanager
+def set_asyncio_event_loop(loop):
+    with ASYNCIO_LOCK:
+        try:
+            orig_lop = asyncio.get_event_loop()
+        except RuntimeError:
+            orig_lop = None
+        asyncio.set_event_loop(loop)
+        try:
+            yield
+        finally:
+            asyncio.set_event_loop(orig_lop)
+
+
+class TestUpdater:
     message_count = 0
     received = None
     attempts = 0
     err_handler_called = Event()
     cb_handler_called = Event()
+    offset = 0
 
     @pytest.fixture(autouse=True)
     def reset(self):
@@ -69,18 +89,17 @@ class TestUpdater(object):
         self.received = update.message.text
         self.cb_handler_called.set()
 
-    # TODO: test clean= argument of Updater._bootstrap
-
-    @pytest.mark.parametrize(('error',),
-                             argvalues=[(TelegramError('Test Error 2'),),
-                                        (Unauthorized('Test Unauthorized'),)],
-                             ids=('TelegramError', 'Unauthorized'))
+    @pytest.mark.parametrize(
+        ('error',),
+        argvalues=[(TelegramError('Test Error 2'),), (Unauthorized('Test Unauthorized'),)],
+        ids=('TelegramError', 'Unauthorized'),
+    )
     def test_get_updates_normal_err(self, monkeypatch, updater, error):
         def test(*args, **kwargs):
             raise error
 
-        monkeypatch.setattr('telegram.Bot.get_updates', test)
-        monkeypatch.setattr('telegram.Bot.set_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'get_updates', test)
+        monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
         updater.dispatcher.add_error_handler(self.error_handler)
         updater.start_polling(0.01)
 
@@ -99,24 +118,29 @@ class TestUpdater(object):
             raise error
 
         with caplog.at_level(logging.DEBUG):
-            monkeypatch.setattr('telegram.Bot.get_updates', test)
-            monkeypatch.setattr('telegram.Bot.set_webhook', lambda *args, **kwargs: True)
+            monkeypatch.setattr(updater.bot, 'get_updates', test)
+            monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
             updater.dispatcher.add_error_handler(self.error_handler)
             updater.start_polling(0.01)
-            assert self.err_handler_called.wait(0.5) is not True
+            assert self.err_handler_called.wait(1) is not True
 
-        # NOTE: This test might hit a race condition and fail (though the 0.5 seconds delay above
+        sleep(1)
+        # NOTE: This test might hit a race condition and fail (though the 1 seconds delay above
         #       should work around it).
         # NOTE: Checking Updater.running is problematic because it is not set to False when there's
         #       an unhandled exception.
         # TODO: We should have a way to poll Updater status and decide if it's running or not.
-        assert any('unhandled exception in updater' in rec.getMessage() for rec in
-                   caplog.get_records('call'))
+        import pprint
 
-    @pytest.mark.parametrize(('error',),
-                             argvalues=[(RetryAfter(0.01),),
-                                        (TimedOut(),)],
-                             ids=('RetryAfter', 'TimedOut'))
+        pprint.pprint([rec.getMessage() for rec in caplog.get_records('call')])
+        assert any(
+            f'unhandled exception in Bot:{updater.bot.id}:updater' in rec.getMessage()
+            for rec in caplog.get_records('call')
+        )
+
+    @pytest.mark.parametrize(
+        ('error',), argvalues=[(RetryAfter(0.01),), (TimedOut(),)], ids=('RetryAfter', 'TimedOut')
+    )
     def test_get_updates_retries(self, monkeypatch, updater, error):
         event = Event()
 
@@ -124,8 +148,8 @@ class TestUpdater(object):
             event.set()
             raise error
 
-        monkeypatch.setattr('telegram.Bot.get_updates', test)
-        monkeypatch.setattr('telegram.Bot.set_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'get_updates', test)
+        monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
         updater.dispatcher.add_error_handler(self.error_handler)
         updater.start_polling(0.01)
 
@@ -141,120 +165,288 @@ class TestUpdater(object):
 
     def test_webhook(self, monkeypatch, updater):
         q = Queue()
-        monkeypatch.setattr('telegram.Bot.set_webhook', lambda *args, **kwargs: True)
-        monkeypatch.setattr('telegram.Bot.delete_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'delete_webhook', lambda *args, **kwargs: True)
         monkeypatch.setattr('telegram.ext.Dispatcher.process_update', lambda _, u: q.put(u))
 
         ip = '127.0.0.1'
-        port = randrange(1024, 49152)  # Select random port for travis
-        updater.start_webhook(
-            ip,
-            port,
-            url_path='TOKEN',
-            cert='./tests/test_updater.py',
-            key='./tests/test_updater.py', )
-        sleep(.2)
-        # SSL-Wrapping will fail, so we start the server without SSL
-        thr = Thread(target=updater.httpd.serve_forever)
-        thr.start()
-
+        port = randrange(1024, 49152)  # Select random port
+        updater.start_webhook(ip, port, url_path='TOKEN')
+        sleep(0.2)
         try:
             # Now, we send an update to the server via urlopen
-            update = Update(1, message=Message(1, User(1, '', False), None, Chat(1, ''),
-                                               text='Webhook'))
+            update = Update(
+                1,
+                message=Message(
+                    1, None, Chat(1, ''), from_user=User(1, '', False), text='Webhook'
+                ),
+            )
             self._send_webhook_msg(ip, port, update.to_json(), 'TOKEN')
-            sleep(.2)
+            sleep(0.2)
             assert q.get(False) == update
 
-            response = self._send_webhook_msg(ip, port, None, 'webookhandler.py')
-            assert b'' == response.read()
-            assert 200 == response.code
+            # Returns 404 if path is incorrect
+            with pytest.raises(HTTPError) as excinfo:
+                self._send_webhook_msg(ip, port, None, 'webookhandler.py')
+            assert excinfo.value.code == 404
 
-            response = self._send_webhook_msg(ip, port, None, 'webookhandler.py',
-                                              get_method=lambda: 'HEAD')
-
-            assert b'' == response.read()
-            assert 200 == response.code
+            with pytest.raises(HTTPError) as excinfo:
+                self._send_webhook_msg(
+                    ip, port, None, 'webookhandler.py', get_method=lambda: 'HEAD'
+                )
+            assert excinfo.value.code == 404
 
             # Test multiple shutdown() calls
             updater.httpd.shutdown()
         finally:
             updater.httpd.shutdown()
-            thr.join()
+            sleep(0.2)
+            assert not updater.httpd.is_running
+            updater.stop()
+
+    def test_start_webhook_no_warning_or_error_logs(self, caplog, updater, monkeypatch):
+        monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'delete_webhook', lambda *args, **kwargs: True)
+        # prevent api calls from @info decorator when updater.bot.id is used in thread names
+        monkeypatch.setattr(updater.bot, 'bot', User(id=123, first_name='bot', is_bot=True))
+        monkeypatch.setattr(updater.bot, '_commands', [])
+
+        ip = '127.0.0.1'
+        port = randrange(1024, 49152)  # Select random port
+        with caplog.at_level(logging.WARNING):
+            updater.start_webhook(ip, port)
+            updater.stop()
+        assert not caplog.records
+
+    @pytest.mark.skipif(
+        os.name != 'nt' or sys.version_info < (3, 8),
+        reason='Workaround only relevant on windows with py3.8+',
+    )
+    def test_start_webhook_ensure_event_loop(self, updater, monkeypatch):
+        def serve_forever(self, force_event_loop=False, ready=None):
+            with self.server_lock:
+                self.is_running = True
+                self._ensure_event_loop(force_event_loop=force_event_loop)
+
+                if ready is not None:
+                    ready.set()
+
+        monkeypatch.setattr(WebhookServer, 'serve_forever', serve_forever)
+        monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'delete_webhook', lambda *args, **kwargs: True)
+
+        ip = '127.0.0.1'
+        port = randrange(1024, 49152)  # Select random port
+
+        with set_asyncio_event_loop(None):
+            updater._start_webhook(
+                ip,
+                port,
+                url_path='TOKEN',
+                cert=None,
+                key=None,
+                bootstrap_retries=0,
+                clean=False,
+                webhook_url=None,
+                allowed_updates=None,
+            )
+
+            assert isinstance(asyncio.get_event_loop(), asyncio.SelectorEventLoop)
+
+    @pytest.mark.skipif(
+        os.name != 'nt' or sys.version_info < (3, 8),
+        reason='Workaround only relevant on windows with py3.8+',
+    )
+    def test_start_webhook_force_event_loop_false(self, updater, monkeypatch):
+        monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'delete_webhook', lambda *args, **kwargs: True)
+
+        ip = '127.0.0.1'
+        port = randrange(1024, 49152)  # Select random port
+
+        with set_asyncio_event_loop(asyncio.ProactorEventLoop()):
+            with pytest.raises(TypeError, match='`ProactorEventLoop` is incompatible'):
+                updater._start_webhook(
+                    ip,
+                    port,
+                    url_path='TOKEN',
+                    cert=None,
+                    key=None,
+                    bootstrap_retries=0,
+                    clean=False,
+                    webhook_url=None,
+                    allowed_updates=None,
+                )
+
+    @pytest.mark.skipif(
+        os.name != 'nt' or sys.version_info < (3, 8),
+        reason='Workaround only relevant on windows with py3.8+',
+    )
+    def test_start_webhook_force_event_loop_true(self, updater, monkeypatch):
+        def serve_forever(self, force_event_loop=False, ready=None):
+            with self.server_lock:
+                self.is_running = True
+                self._ensure_event_loop(force_event_loop=force_event_loop)
+
+                if ready is not None:
+                    ready.set()
+
+        monkeypatch.setattr(WebhookServer, 'serve_forever', serve_forever)
+        monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'delete_webhook', lambda *args, **kwargs: True)
+
+        ip = '127.0.0.1'
+        port = randrange(1024, 49152)  # Select random port
+
+        with set_asyncio_event_loop(asyncio.ProactorEventLoop()):
+            updater._start_webhook(
+                ip,
+                port,
+                url_path='TOKEN',
+                cert=None,
+                key=None,
+                bootstrap_retries=0,
+                clean=False,
+                webhook_url=None,
+                allowed_updates=None,
+                force_event_loop=True,
+            )
+            assert isinstance(asyncio.get_event_loop(), asyncio.ProactorEventLoop)
+
+    def test_webhook_ssl(self, monkeypatch, updater):
+        monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'delete_webhook', lambda *args, **kwargs: True)
+        ip = '127.0.0.1'
+        port = randrange(1024, 49152)  # Select random port
+        tg_err = False
+        try:
+            updater._start_webhook(
+                ip,
+                port,
+                url_path='TOKEN',
+                cert='./tests/test_updater.py',
+                key='./tests/test_updater.py',
+                bootstrap_retries=0,
+                clean=False,
+                webhook_url=None,
+                allowed_updates=None,
+            )
+        except TelegramError:
+            tg_err = True
+        assert tg_err
 
     def test_webhook_no_ssl(self, monkeypatch, updater):
         q = Queue()
-        monkeypatch.setattr('telegram.Bot.set_webhook', lambda *args, **kwargs: True)
-        monkeypatch.setattr('telegram.Bot.delete_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'set_webhook', lambda *args, **kwargs: True)
+        monkeypatch.setattr(updater.bot, 'delete_webhook', lambda *args, **kwargs: True)
         monkeypatch.setattr('telegram.ext.Dispatcher.process_update', lambda _, u: q.put(u))
 
         ip = '127.0.0.1'
-        port = randrange(1024, 49152)  # Select random port for travis
+        port = randrange(1024, 49152)  # Select random port
         updater.start_webhook(ip, port, webhook_url=None)
-        sleep(.2)
+        sleep(0.2)
 
         # Now, we send an update to the server via urlopen
-        update = Update(1, message=Message(1, User(1, '', False), None, Chat(1, ''),
-                                           text='Webhook 2'))
+        update = Update(
+            1,
+            message=Message(1, None, Chat(1, ''), from_user=User(1, '', False), text='Webhook 2'),
+        )
         self._send_webhook_msg(ip, port, update.to_json())
-        sleep(.2)
+        sleep(0.2)
         assert q.get(False) == update
+        updater.stop()
 
-    @pytest.mark.parametrize(('error',),
-                             argvalues=[(TelegramError(''),)],
-                             ids=('TelegramError',))
+    @pytest.mark.parametrize(('error',), argvalues=[(TelegramError(''),)], ids=('TelegramError',))
     def test_bootstrap_retries_success(self, monkeypatch, updater, error):
         retries = 2
 
-        def attempt(_, *args, **kwargs):
+        def attempt(*args, **kwargs):
             if self.attempts < retries:
                 self.attempts += 1
                 raise error
 
-        monkeypatch.setattr('telegram.Bot.set_webhook', attempt)
+        monkeypatch.setattr(updater.bot, 'set_webhook', attempt)
 
         updater.running = True
         updater._bootstrap(retries, False, 'path', None, bootstrap_interval=0)
         assert self.attempts == retries
 
-    @pytest.mark.parametrize(('error', 'attempts'),
-                             argvalues=[(TelegramError(''), 2),
-                                        (Unauthorized(''), 1),
-                                        (InvalidToken(), 1)],
-                             ids=('TelegramError', 'Unauthorized', 'InvalidToken'))
+    @pytest.mark.parametrize(
+        ('error', 'attempts'),
+        argvalues=[(TelegramError(''), 2), (Unauthorized(''), 1), (InvalidToken(), 1)],
+        ids=('TelegramError', 'Unauthorized', 'InvalidToken'),
+    )
     def test_bootstrap_retries_error(self, monkeypatch, updater, error, attempts):
         retries = 1
 
-        def attempt(_, *args, **kwargs):
+        def attempt(*args, **kwargs):
             self.attempts += 1
             raise error
 
-        monkeypatch.setattr('telegram.Bot.set_webhook', attempt)
+        monkeypatch.setattr(updater.bot, 'set_webhook', attempt)
 
         updater.running = True
         with pytest.raises(type(error)):
             updater._bootstrap(retries, False, 'path', None, bootstrap_interval=0)
         assert self.attempts == attempts
 
+    def test_bootstrap_clean_updates(self, monkeypatch, updater):
+        clean = True
+        expected_id = 4
+        self.offset = 0
+
+        def get_updates(*args, **kwargs):
+            # we're hitting this func twice
+            # 1. no args, return list of updates
+            # 2. with 1 arg, int => if int == expected_id => test successful
+
+            # case 2
+            # 2nd call from bootstrap____clean
+            # we should be called with offset = 4
+            # save value passed in self.offset for assert down below
+            if len(args) > 0:
+                self.offset = int(args[0])
+                return []
+
+            class FakeUpdate:
+                def __init__(self, update_id):
+                    self.update_id = update_id
+
+            # case 1
+            # return list of obj's
+
+            # build list of fake updates
+            # returns list of 4 objects with
+            # update_id's 0, 1, 2 and 3
+            return [FakeUpdate(i) for i in range(0, expected_id)]
+
+        monkeypatch.setattr(updater.bot, 'get_updates', get_updates)
+
+        updater.running = True
+        updater._bootstrap(1, clean, None, None, bootstrap_interval=0)
+        assert self.offset == expected_id
+
+    @flaky(3, 1)
     def test_webhook_invalid_posts(self, updater):
         ip = '127.0.0.1'
         port = randrange(1024, 49152)  # select random port for travis
         thr = Thread(
-            target=updater._start_webhook,
-            args=(ip, port, '', None, None, 0, False, None, None))
+            target=updater._start_webhook, args=(ip, port, '', None, None, 0, False, None, None)
+        )
         thr.start()
 
-        sleep(.2)
+        sleep(0.2)
 
         try:
             with pytest.raises(HTTPError) as excinfo:
-                self._send_webhook_msg(ip, port, '<root><bla>data</bla></root>',
-                                       content_type='application/xml')
+                self._send_webhook_msg(
+                    ip, port, '<root><bla>data</bla></root>', content_type='application/xml'
+                )
             assert excinfo.value.code == 403
 
             with pytest.raises(HTTPError) as excinfo:
                 self._send_webhook_msg(ip, port, 'dummy-payload', content_len=-2)
-            assert excinfo.value.code == 403
+            assert excinfo.value.code == 500
 
             # TODO: prevent urllib or the underlying from adding content-length
             # with pytest.raises(HTTPError) as excinfo:
@@ -263,21 +455,25 @@ class TestUpdater(object):
 
             with pytest.raises(HTTPError):
                 self._send_webhook_msg(ip, port, 'dummy-payload', content_len='not-a-number')
-            assert excinfo.value.code == 403
+            assert excinfo.value.code == 500
 
         finally:
             updater.httpd.shutdown()
             thr.join()
 
-    def _send_webhook_msg(self,
-                          ip,
-                          port,
-                          payload_str,
-                          url_path='',
-                          content_len=-1,
-                          content_type='application/json',
-                          get_method=None):
-        headers = {'content-type': content_type, }
+    def _send_webhook_msg(
+        self,
+        ip,
+        port,
+        payload_str,
+        url_path='',
+        content_len=-1,
+        content_type='application/json',
+        get_method=None,
+    ):
+        headers = {
+            'content-type': content_type,
+        }
 
         if not payload_str:
             content_len = None
@@ -291,7 +487,7 @@ class TestUpdater(object):
         if content_len is not None:
             headers['content-length'] = str(content_len)
 
-        url = 'http://{ip}:{port}/{path}'.format(ip=ip, port=port, path=url_path)
+        url = f'http://{ip}:{port}/{url_path}'
 
         req = Request(url, data=payload, headers=headers)
 
@@ -315,12 +511,16 @@ class TestUpdater(object):
         with caplog.at_level(logging.INFO):
             updater.idle()
 
+        rec = caplog.records[-2]
+        assert rec.getMessage().startswith(f'Received signal {signal.SIGTERM}')
+        assert rec.levelname == 'INFO'
+
         rec = caplog.records[-1]
-        assert rec.msg.startswith('Received signal {}'.format(signal.SIGTERM))
+        assert rec.getMessage().startswith('Scheduler has been shut down')
         assert rec.levelname == 'INFO'
 
         # If we get this far, idle() ran through
-        sleep(.5)
+        sleep(0.5)
         assert updater.running is False
 
     @signalskip
@@ -335,7 +535,7 @@ class TestUpdater(object):
         Thread(target=partial(self.signal_sender, updater=updater)).start()
         updater.idle()
         # If we get this far, idle() ran through
-        sleep(.5)
+        sleep(0.5)
         assert updater.running is False
         assert temp_var['a'] != 0
 
@@ -348,7 +548,7 @@ class TestUpdater(object):
         with pytest.raises(ValueError):
             Updater(token='123:abcd', bot=bot)
 
-    def test_no_token_or_bot(self):
+    def test_no_token_or_bot_or_dispatcher(self):
         with pytest.raises(ValueError):
             Updater()
 
@@ -356,3 +556,30 @@ class TestUpdater(object):
         bot = Bot('123:zyxw')
         with pytest.raises(ValueError):
             Updater(bot=bot, private_key=b'key')
+
+    def test_mutual_exclude_bot_dispatcher(self):
+        dispatcher = Dispatcher(None, None)
+        bot = Bot('123:zyxw')
+        with pytest.raises(ValueError):
+            Updater(bot=bot, dispatcher=dispatcher)
+
+    def test_mutual_exclude_persistence_dispatcher(self):
+        dispatcher = Dispatcher(None, None)
+        persistence = DictPersistence()
+        with pytest.raises(ValueError):
+            Updater(dispatcher=dispatcher, persistence=persistence)
+
+    def test_mutual_exclude_workers_dispatcher(self):
+        dispatcher = Dispatcher(None, None)
+        with pytest.raises(ValueError):
+            Updater(dispatcher=dispatcher, workers=8)
+
+    def test_mutual_exclude_use_context_dispatcher(self):
+        dispatcher = Dispatcher(None, None)
+        use_context = not dispatcher.use_context
+        with pytest.raises(ValueError):
+            Updater(dispatcher=dispatcher, use_context=use_context)
+
+    def test_defaults_warning(self, bot):
+        with pytest.warns(TelegramDeprecationWarning, match='no effect when a Bot is passed'):
+            Updater(bot=bot, defaults=Defaults())

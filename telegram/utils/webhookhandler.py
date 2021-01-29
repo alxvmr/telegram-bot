@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2018
+# Copyright (C) 2015-2020
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,122 +16,176 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
+# pylint: disable=E0401, C0114
+
+import asyncio
 import logging
+import os
+import sys
+from queue import Queue
+from ssl import SSLContext
+from threading import Event, Lock
+from typing import TYPE_CHECKING, Any, Optional
+
+import tornado.web
+from tornado import httputil
+from tornado.httpserver import HTTPServer
+from tornado.ioloop import IOLoop
 
 from telegram import Update
-from future.utils import bytes_to_native_str
-from threading import Lock
+from telegram.utils.types import JSONDict
+
+if TYPE_CHECKING:
+    from telegram import Bot
+
 try:
     import ujson as json
 except ImportError:
-    import json
-try:
-    import BaseHTTPServer
-except ImportError:
-    import http.server as BaseHTTPServer
-
-logging.getLogger(__name__).addHandler(logging.NullHandler())
+    import json  # type: ignore[no-redef]
 
 
-class _InvalidPost(Exception):
-
-    def __init__(self, http_code):
-        self.http_code = http_code
-        super(_InvalidPost, self).__init__()
-
-
-class WebhookServer(BaseHTTPServer.HTTPServer, object):
-
-    def __init__(self, server_address, RequestHandlerClass, update_queue, webhook_path, bot):
-        super(WebhookServer, self).__init__(server_address, RequestHandlerClass)
+class WebhookServer:
+    def __init__(
+        self, listen: str, port: int, webhook_app: 'WebhookAppClass', ssl_ctx: SSLContext
+    ):
+        self.http_server = HTTPServer(webhook_app, ssl_options=ssl_ctx)
+        self.listen = listen
+        self.port = port
+        self.loop: Optional[IOLoop] = None
         self.logger = logging.getLogger(__name__)
-        self.update_queue = update_queue
-        self.webhook_path = webhook_path
-        self.bot = bot
         self.is_running = False
         self.server_lock = Lock()
         self.shutdown_lock = Lock()
 
-    def serve_forever(self, poll_interval=0.5):
+    def serve_forever(self, force_event_loop: bool = False, ready: Event = None) -> None:
         with self.server_lock:
             self.is_running = True
             self.logger.debug('Webhook Server started.')
-            super(WebhookServer, self).serve_forever(poll_interval)
-            self.logger.debug('Webhook Server stopped.')
+            self._ensure_event_loop(force_event_loop=force_event_loop)
+            self.loop = IOLoop.current()
+            self.http_server.listen(self.port, address=self.listen)
 
-    def shutdown(self):
+            if ready is not None:
+                ready.set()
+
+            self.loop.start()
+            self.logger.debug('Webhook Server stopped.')
+            self.is_running = False
+
+    def shutdown(self) -> None:
         with self.shutdown_lock:
             if not self.is_running:
                 self.logger.warning('Webhook Server already stopped.')
                 return
-            else:
-                super(WebhookServer, self).shutdown()
-                self.is_running = False
+            self.loop.add_callback(self.loop.stop)  # type: ignore
 
-    def handle_error(self, request, client_address):
+    def handle_error(self, request: Any, client_address: str) -> None:  # pylint: disable=W0613
         """Handle an error gracefully."""
-        self.logger.debug('Exception happened during processing of request from %s',
-                          client_address, exc_info=True)
+        self.logger.debug(
+            'Exception happened during processing of request from %s',
+            client_address,
+            exc_info=True,
+        )
+
+    def _ensure_event_loop(self, force_event_loop: bool = False) -> None:
+        """If there's no asyncio event loop set for the current thread - create one."""
+        try:
+            loop = asyncio.get_event_loop()
+            if (
+                not force_event_loop
+                and os.name == 'nt'
+                and sys.version_info >= (3, 8)
+                and isinstance(loop, asyncio.ProactorEventLoop)
+            ):
+                raise TypeError(
+                    '`ProactorEventLoop` is incompatible with '
+                    'Tornado. Please switch to `SelectorEventLoop`.'
+                )
+        except RuntimeError:
+            # Python 3.8 changed default asyncio event loop implementation on windows
+            # from SelectorEventLoop to ProactorEventLoop. At the time of this writing
+            # Tornado doesn't support ProactorEventLoop and suggests that end users
+            # change asyncio event loop policy to WindowsSelectorEventLoopPolicy.
+            # https://github.com/tornadoweb/tornado/issues/2608
+            # To avoid changing the global event loop policy, we manually construct
+            # a SelectorEventLoop instance instead of using asyncio.new_event_loop().
+            # Note that the fix is not applied in the main thread, as that can break
+            # user code in even more ways than changing the global event loop policy can,
+            # and because Updater always starts its webhook server in a separate thread.
+            # Ideally, we would want to check that Tornado actually raises the expected
+            # NotImplementedError, but it's not possible to cleanly recover from that
+            # exception in current Tornado version.
+            if (
+                os.name == 'nt'
+                and sys.version_info >= (3, 8)
+                # OS+version check makes hasattr check redundant, but just to be sure
+                and hasattr(asyncio, 'WindowsProactorEventLoopPolicy')
+                and (
+                    isinstance(
+                        asyncio.get_event_loop_policy(),
+                        asyncio.WindowsProactorEventLoopPolicy,  # pylint: disable=E1101
+                    )
+                )
+            ):  # pylint: disable=E1101
+                self.logger.debug(
+                    'Applying Tornado asyncio event loop fix for Python 3.8+ on Windows'
+                )
+                loop = asyncio.SelectorEventLoop()
+            else:
+                loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+
+class WebhookAppClass(tornado.web.Application):
+    def __init__(self, webhook_path: str, bot: 'Bot', update_queue: Queue):
+        self.shared_objects = {"bot": bot, "update_queue": update_queue}
+        handlers = [(rf"{webhook_path}/?", WebhookHandler, self.shared_objects)]  # noqa
+        tornado.web.Application.__init__(self, handlers)
+
+    def log_request(self, handler: tornado.web.RequestHandler) -> None:
+        pass
 
 
 # WebhookHandler, process webhook calls
-# Based on: https://github.com/eternnoir/pyTelegramBotAPI/blob/master/
-# examples/webhook_examples/webhook_cpython_echo_bot.py
-class WebhookHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
-    server_version = 'WebhookHandler/1.0'
+# pylint: disable=W0223
+class WebhookHandler(tornado.web.RequestHandler):
+    SUPPORTED_METHODS = ["POST"]
 
-    def __init__(self, request, client_address, server):
+    def __init__(
+        self,
+        application: tornado.web.Application,
+        request: httputil.HTTPServerRequest,
+        **kwargs: JSONDict,
+    ):
+        super().__init__(application, request, **kwargs)
         self.logger = logging.getLogger(__name__)
-        super(WebhookHandler, self).__init__(request, client_address, server)
 
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
+    def initialize(self, bot: 'Bot', update_queue: Queue) -> None:
+        # pylint: disable=W0201
+        self.bot = bot
+        self.update_queue = update_queue
 
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
+    def set_default_headers(self) -> None:
+        self.set_header("Content-Type", 'application/json; charset="utf-8"')
 
-    def do_POST(self):
+    def post(self) -> None:
         self.logger.debug('Webhook triggered')
-        try:
-            self._validate_post()
-            clen = self._get_content_len()
-        except _InvalidPost as e:
-            self.send_error(e.http_code)
-            self.end_headers()
-        else:
-            buf = self.rfile.read(clen)
-            json_string = bytes_to_native_str(buf)
+        self._validate_post()
+        json_string = self.request.body.decode()
+        data = json.loads(json_string)
+        self.set_status(200)
+        self.logger.debug('Webhook received data: %s', json_string)
+        update = Update.de_json(data, self.bot)
+        if update:
+            self.logger.debug('Received Update with ID %d on Webhook', update.update_id)
+            self.update_queue.put(update)
 
-            self.send_response(200)
-            self.end_headers()
+    def _validate_post(self) -> None:
+        ct_header = self.request.headers.get("Content-Type", None)
+        if ct_header != 'application/json':
+            raise tornado.web.HTTPError(403)
 
-            self.logger.debug('Webhook received data: ' + json_string)
-
-            update = Update.de_json(json.loads(json_string), self.server.bot)
-
-            self.logger.debug('Received Update with ID %d on Webhook' % update.update_id)
-            self.server.update_queue.put(update)
-
-    def _validate_post(self):
-        if not (self.path == self.server.webhook_path and 'content-type' in self.headers and
-                self.headers['content-type'] == 'application/json'):
-            raise _InvalidPost(403)
-
-    def _get_content_len(self):
-        clen = self.headers.get('content-length')
-        if clen is None:
-            raise _InvalidPost(411)
-        try:
-            clen = int(clen)
-        except ValueError:
-            raise _InvalidPost(403)
-        if clen < 0:
-            raise _InvalidPost(403)
-        return clen
-
-    def log_message(self, format, *args):
+    def write_error(self, status_code: int, **kwargs: Any) -> None:
         """Log an arbitrary message.
 
         This is used by all other logging functions.
@@ -145,4 +199,10 @@ class WebhookHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         The client ip is prefixed to every message.
 
         """
-        self.logger.debug("%s - - %s" % (self.address_string(), format % args))
+        super().write_error(status_code, **kwargs)
+        self.logger.debug(
+            "%s - - %s",
+            self.request.remote_ip,
+            "Exception in WebhookHandler",
+            exc_info=kwargs['exc_info'],
+        )

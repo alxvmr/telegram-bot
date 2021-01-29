@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2018
+# Copyright (C) 2015-2020
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,13 +16,25 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
+from queue import Queue
+
 import pytest
 
-from telegram import (Bot, Update, Message, User, Chat, CallbackQuery, InlineQuery,
-                      ChosenInlineResult, ShippingQuery, PreCheckoutQuery)
-from telegram.ext import StringRegexHandler
+from telegram import (
+    Bot,
+    Update,
+    Message,
+    User,
+    Chat,
+    CallbackQuery,
+    InlineQuery,
+    ChosenInlineResult,
+    ShippingQuery,
+    PreCheckoutQuery,
+)
+from telegram.ext import StringRegexHandler, CallbackContext, JobQueue
 
-message = Message(1, User(1, '', False), None, Chat(1, ''), text='Text')
+message = Message(1, None, Chat(1, ''), from_user=User(1, '', False), text='Text')
 
 params = [
     {'message': message},
@@ -34,12 +46,21 @@ params = [
     {'chosen_inline_result': ChosenInlineResult('id', User(1, '', False), '')},
     {'shipping_query': ShippingQuery('id', User(1, '', False), '', None)},
     {'pre_checkout_query': PreCheckoutQuery('id', User(1, '', False), '', 0, '')},
-    {'callback_query': CallbackQuery(1, User(1, '', False), 'chat')}
+    {'callback_query': CallbackQuery(1, User(1, '', False), 'chat')},
 ]
 
-ids = ('message', 'edited_message', 'callback_query', 'channel_post',
-       'edited_channel_post', 'inline_query', 'chosen_inline_result',
-       'shipping_query', 'pre_checkout_query', 'callback_query_without_message')
+ids = (
+    'message',
+    'edited_message',
+    'callback_query',
+    'channel_post',
+    'edited_channel_post',
+    'inline_query',
+    'chosen_inline_result',
+    'shipping_query',
+    'pre_checkout_query',
+    'callback_query_without_message',
+)
 
 
 @pytest.fixture(scope='class', params=params, ids=ids)
@@ -47,7 +68,7 @@ def false_update(request):
     return Update(update_id=1, **request.param)
 
 
-class TestStringRegexHandler(object):
+class TestStringRegexHandler:
     test_flag = False
 
     @pytest.fixture(autouse=True)
@@ -71,6 +92,21 @@ class TestStringRegexHandler(object):
         if groupdict is not None:
             self.test_flag = groupdict == {'begin': 't', 'end': ' message'}
 
+    def callback_context(self, update, context):
+        self.test_flag = (
+            isinstance(context, CallbackContext)
+            and isinstance(context.bot, Bot)
+            and isinstance(update, str)
+            and isinstance(context.update_queue, Queue)
+            and isinstance(context.job_queue, JobQueue)
+        )
+
+    def callback_context_pattern(self, update, context):
+        if context.matches[0].groups():
+            self.test_flag = context.matches[0].groups() == ('t', ' message')
+        if context.matches[0].groupdict():
+            self.test_flag = context.matches[0].groupdict() == {'begin': 't', 'end': ' message'}
+
     def test_basic(self, dp):
         handler = StringRegexHandler('(?P<begin>.*)est(?P<end>.*)', self.callback_basic)
         dp.add_handler(handler)
@@ -82,16 +118,18 @@ class TestStringRegexHandler(object):
         assert not handler.check_update('does not match')
 
     def test_with_passing_group_dict(self, dp):
-        handler = StringRegexHandler('(?P<begin>.*)est(?P<end>.*)', self.callback_group,
-                                     pass_groups=True)
+        handler = StringRegexHandler(
+            '(?P<begin>.*)est(?P<end>.*)', self.callback_group, pass_groups=True
+        )
         dp.add_handler(handler)
 
         dp.process_update('test message')
         assert self.test_flag
 
         dp.remove_handler(handler)
-        handler = StringRegexHandler('(?P<begin>.*)est(?P<end>.*)', self.callback_group,
-                                     pass_groupdict=True)
+        handler = StringRegexHandler(
+            '(?P<begin>.*)est(?P<end>.*)', self.callback_group, pass_groupdict=True
+        )
         dp.add_handler(handler)
 
         self.test_flag = False
@@ -114,8 +152,9 @@ class TestStringRegexHandler(object):
         assert self.test_flag
 
         dp.remove_handler(handler)
-        handler = StringRegexHandler('test', self.callback_queue_2, pass_job_queue=True,
-                                     pass_update_queue=True)
+        handler = StringRegexHandler(
+            'test', self.callback_queue_2, pass_job_queue=True, pass_update_queue=True
+        )
         dp.add_handler(handler)
 
         self.test_flag = False
@@ -125,3 +164,24 @@ class TestStringRegexHandler(object):
     def test_other_update_types(self, false_update):
         handler = StringRegexHandler('test', self.callback_basic)
         assert not handler.check_update(false_update)
+
+    def test_context(self, cdp):
+        handler = StringRegexHandler(r'(t)est(.*)', self.callback_context)
+        cdp.add_handler(handler)
+
+        cdp.process_update('test message')
+        assert self.test_flag
+
+    def test_context_pattern(self, cdp):
+        handler = StringRegexHandler(r'(t)est(.*)', self.callback_context_pattern)
+        cdp.add_handler(handler)
+
+        cdp.process_update('test message')
+        assert self.test_flag
+
+        cdp.remove_handler(handler)
+        handler = StringRegexHandler(r'(t)est(.*)', self.callback_context_pattern)
+        cdp.add_handler(handler)
+
+        cdp.process_update('test message')
+        assert self.test_flag

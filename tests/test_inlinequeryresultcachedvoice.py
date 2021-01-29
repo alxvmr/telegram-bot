@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2018
+# Copyright (C) 2015-2020
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -19,70 +19,99 @@
 
 import pytest
 
-from telegram import (InlineQueryResultCachedVoice, InlineKeyboardButton, InlineKeyboardMarkup,
-                      InlineQueryResultCachedAudio, InputTextMessageContent)
+from telegram import (
+    InlineQueryResultCachedVoice,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InlineQueryResultCachedAudio,
+    InputTextMessageContent,
+    MessageEntity,
+)
 
 
 @pytest.fixture(scope='class')
 def inline_query_result_cached_voice():
     return InlineQueryResultCachedVoice(
-        TestInlineQueryResultCachedVoice.id,
+        TestInlineQueryResultCachedVoice.id_,
         TestInlineQueryResultCachedVoice.voice_file_id,
         TestInlineQueryResultCachedVoice.title,
         caption=TestInlineQueryResultCachedVoice.caption,
         parse_mode=TestInlineQueryResultCachedVoice.parse_mode,
+        caption_entities=TestInlineQueryResultCachedVoice.caption_entities,
         input_message_content=TestInlineQueryResultCachedVoice.input_message_content,
-        reply_markup=TestInlineQueryResultCachedVoice.reply_markup)
+        reply_markup=TestInlineQueryResultCachedVoice.reply_markup,
+    )
 
 
-class TestInlineQueryResultCachedVoice(object):
-    id = 'id'
-    type = 'voice'
+class TestInlineQueryResultCachedVoice:
+    id_ = 'id'
+    type_ = 'voice'
     voice_file_id = 'voice file id'
     title = 'title'
     caption = 'caption'
     parse_mode = 'HTML'
+    caption_entities = [MessageEntity(MessageEntity.ITALIC, 0, 7)]
     input_message_content = InputTextMessageContent('input_message_content')
     reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton('reply_markup')]])
 
     def test_expected_values(self, inline_query_result_cached_voice):
-        assert inline_query_result_cached_voice.type == self.type
-        assert inline_query_result_cached_voice.id == self.id
+        assert inline_query_result_cached_voice.type == self.type_
+        assert inline_query_result_cached_voice.id == self.id_
         assert inline_query_result_cached_voice.voice_file_id == self.voice_file_id
         assert inline_query_result_cached_voice.title == self.title
         assert inline_query_result_cached_voice.caption == self.caption
         assert inline_query_result_cached_voice.parse_mode == self.parse_mode
-        assert (inline_query_result_cached_voice.input_message_content.to_dict() ==
-                self.input_message_content.to_dict())
-        assert (inline_query_result_cached_voice.reply_markup.to_dict() ==
-                self.reply_markup.to_dict())
+        assert inline_query_result_cached_voice.caption_entities == self.caption_entities
+        assert (
+            inline_query_result_cached_voice.input_message_content.to_dict()
+            == self.input_message_content.to_dict()
+        )
+        assert (
+            inline_query_result_cached_voice.reply_markup.to_dict() == self.reply_markup.to_dict()
+        )
 
     def test_to_dict(self, inline_query_result_cached_voice):
         inline_query_result_cached_voice_dict = inline_query_result_cached_voice.to_dict()
 
         assert isinstance(inline_query_result_cached_voice_dict, dict)
-        assert (inline_query_result_cached_voice_dict['type'] ==
-                inline_query_result_cached_voice.type)
+        assert (
+            inline_query_result_cached_voice_dict['type'] == inline_query_result_cached_voice.type
+        )
         assert inline_query_result_cached_voice_dict['id'] == inline_query_result_cached_voice.id
-        assert (inline_query_result_cached_voice_dict['voice_file_id'] ==
-                inline_query_result_cached_voice.voice_file_id)
-        assert (inline_query_result_cached_voice_dict['title'] ==
-                inline_query_result_cached_voice.title)
-        assert (inline_query_result_cached_voice_dict['caption'] ==
-                inline_query_result_cached_voice.caption)
-        assert (inline_query_result_cached_voice_dict['parse_mode'] ==
-                inline_query_result_cached_voice.parse_mode)
-        assert (inline_query_result_cached_voice_dict['input_message_content'] ==
-                inline_query_result_cached_voice.input_message_content.to_dict())
-        assert (inline_query_result_cached_voice_dict['reply_markup'] ==
-                inline_query_result_cached_voice.reply_markup.to_dict())
+        assert (
+            inline_query_result_cached_voice_dict['voice_file_id']
+            == inline_query_result_cached_voice.voice_file_id
+        )
+        assert (
+            inline_query_result_cached_voice_dict['title']
+            == inline_query_result_cached_voice.title
+        )
+        assert (
+            inline_query_result_cached_voice_dict['caption']
+            == inline_query_result_cached_voice.caption
+        )
+        assert (
+            inline_query_result_cached_voice_dict['parse_mode']
+            == inline_query_result_cached_voice.parse_mode
+        )
+        assert inline_query_result_cached_voice_dict['caption_entities'] == [
+            ce.to_dict() for ce in inline_query_result_cached_voice.caption_entities
+        ]
+        assert (
+            inline_query_result_cached_voice_dict['input_message_content']
+            == inline_query_result_cached_voice.input_message_content.to_dict()
+        )
+        assert (
+            inline_query_result_cached_voice_dict['reply_markup']
+            == inline_query_result_cached_voice.reply_markup.to_dict()
+        )
 
     def test_equality(self):
-        a = InlineQueryResultCachedVoice(self.id, self.voice_file_id, self.title)
-        b = InlineQueryResultCachedVoice(self.id, self.voice_file_id, self.title)
-        c = InlineQueryResultCachedVoice(self.id, '', self.title)
+        a = InlineQueryResultCachedVoice(self.id_, self.voice_file_id, self.title)
+        b = InlineQueryResultCachedVoice(self.id_, self.voice_file_id, self.title)
+        c = InlineQueryResultCachedVoice(self.id_, '', self.title)
         d = InlineQueryResultCachedVoice('', self.voice_file_id, self.title)
-        e = InlineQueryResultCachedAudio(self.id, '', '')
+        e = InlineQueryResultCachedAudio(self.id_, '', '')
 
         assert a == b
         assert hash(a) == hash(b)

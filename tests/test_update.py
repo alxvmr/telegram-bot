@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2018
+# Copyright (C) 2015-2020
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -19,10 +19,22 @@
 
 import pytest
 
-from telegram import (Message, User, Update, Chat, CallbackQuery, InlineQuery,
-                      ChosenInlineResult, ShippingQuery, PreCheckoutQuery)
+from telegram import (
+    Message,
+    User,
+    Update,
+    Chat,
+    CallbackQuery,
+    InlineQuery,
+    ChosenInlineResult,
+    ShippingQuery,
+    PreCheckoutQuery,
+    Poll,
+    PollOption,
+)
+from telegram.poll import PollAnswer
 
-message = Message(1, User(1, '', False), None, Chat(1, ''), text='Text')
+message = Message(1, None, Chat(1, ''), from_user=User(1, '', False), text='Text')
 
 params = [
     {'message': message},
@@ -34,12 +46,24 @@ params = [
     {'chosen_inline_result': ChosenInlineResult('id', User(1, '', False), '')},
     {'shipping_query': ShippingQuery('id', User(1, '', False), '', None)},
     {'pre_checkout_query': PreCheckoutQuery('id', User(1, '', False), '', 0, '')},
-    {'callback_query': CallbackQuery(1, User(1, '', False), 'chat')}
+    {'callback_query': CallbackQuery(1, User(1, '', False), 'chat')},
+    {'poll': Poll('id', '?', [PollOption('.', 1)], False, False, False, Poll.REGULAR, True)},
+    {'poll_answer': PollAnswer("id", User(1, '', False), [1])},
 ]
 
-all_types = ('message', 'edited_message', 'callback_query', 'channel_post',
-             'edited_channel_post', 'inline_query', 'chosen_inline_result',
-             'shipping_query', 'pre_checkout_query')
+all_types = (
+    'message',
+    'edited_message',
+    'callback_query',
+    'channel_post',
+    'edited_channel_post',
+    'inline_query',
+    'chosen_inline_result',
+    'shipping_query',
+    'pre_checkout_query',
+    'poll',
+    'poll_answer',
+)
 
 ids = all_types + ('callback_query_without_message',)
 
@@ -49,7 +73,7 @@ def update(request):
     return Update(update_id=TestUpdate.update_id, **request.param)
 
 
-class TestUpdate(object):
+class TestUpdate:
     update_id = 868573637
 
     @pytest.mark.parametrize('paramdict', argvalues=params, ids=ids)
@@ -86,12 +110,15 @@ class TestUpdate(object):
     def test_effective_chat(self, update):
         # Test that it's sometimes None per docstring
         chat = update.effective_chat
-        if not (update.inline_query is not None
-                or update.chosen_inline_result is not None
-                or (update.callback_query is not None
-                    and update.callback_query.message is None)
-                or update.shipping_query is not None
-                or update.pre_checkout_query is not None):
+        if not (
+            update.inline_query is not None
+            or update.chosen_inline_result is not None
+            or (update.callback_query is not None and update.callback_query.message is None)
+            or update.shipping_query is not None
+            or update.pre_checkout_query is not None
+            or update.poll is not None
+            or update.poll_answer is not None
+        ):
             assert chat.id == 1
         else:
             assert chat is None
@@ -99,7 +126,11 @@ class TestUpdate(object):
     def test_effective_user(self, update):
         # Test that it's sometimes None per docstring
         user = update.effective_user
-        if not (update.channel_post is not None or update.edited_channel_post is not None):
+        if not (
+            update.channel_post is not None
+            or update.edited_channel_post is not None
+            or update.poll is not None
+        ):
             assert user.id == 1
         else:
             assert user is None
@@ -107,12 +138,15 @@ class TestUpdate(object):
     def test_effective_message(self, update):
         # Test that it's sometimes None per docstring
         eff_message = update.effective_message
-        if not (update.inline_query is not None
-                or update.chosen_inline_result is not None
-                or (update.callback_query is not None
-                    and update.callback_query.message is None)
-                or update.shipping_query is not None
-                or update.pre_checkout_query is not None):
+        if not (
+            update.inline_query is not None
+            or update.chosen_inline_result is not None
+            or (update.callback_query is not None and update.callback_query.message is None)
+            or update.shipping_query is not None
+            or update.pre_checkout_query is not None
+            or update.poll is not None
+            or update.poll_answer is not None
+        ):
             assert eff_message.message_id == message.message_id
         else:
             assert eff_message is None

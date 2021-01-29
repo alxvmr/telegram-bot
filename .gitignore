@@ -23,6 +23,11 @@ var/
 .installed.cfg
 *.egg
 .env
+.pybuild
+debian/tmp
+debian/python3-telegram
+debian/python3-telegram-doc
+debian/.debhelper
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -41,6 +46,7 @@ htmlcov/
 .coverage.*
 .cache
 .pytest_cache
+.mypy_cache
 nosetests.xml
 coverage.xml
 *,cover
@@ -64,6 +70,7 @@ target/
 *.sublime*
 
 # unitests files
+game.gif
 telegram.mp3
 telegram.mp4
 telegram2.mp4

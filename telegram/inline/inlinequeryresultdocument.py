@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2018
+# Copyright (C) 2015-2020
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,13 @@
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
 """This module contains the classes that represent Telegram InlineQueryResultDocument"""
 
-from telegram import InlineQueryResult
+from typing import TYPE_CHECKING, Any, Union, Tuple, List
+
+from telegram import InlineQueryResult, MessageEntity
+from telegram.utils.helpers import DEFAULT_NONE, DefaultValue
+
+if TYPE_CHECKING:
+    from telegram import InputMessageContent, ReplyMarkup
 
 
 class InlineQueryResultDocument(InlineQueryResult):
@@ -32,10 +38,14 @@ class InlineQueryResultDocument(InlineQueryResult):
         type (:obj:`str`): 'document'.
         id (:obj:`str`): Unique identifier for this result, 1-64 bytes.
         title (:obj:`str`): Title for the result.
-        caption (:obj:`str`): Optional. Caption, 0-200 characters
+        caption (:obj:`str`): Optional. Caption of the document to be sent, 0-1024 characters
+            after entities parsing.
         parse_mode (:obj:`str`): Optional. Send Markdown or HTML, if you want Telegram apps to show
             bold, italic, fixed-width text or inline URLs in the media caption. See the constants
             in :class:`telegram.ParseMode` for the available modes.
+        caption_entities (List[:class:`telegram.MessageEntity`]): Optional. List of special
+            entities that appear in the caption, which can be specified instead of
+            :attr:`parse_mode`.
         document_url (:obj:`str`): A valid URL for the file.
         mime_type (:obj:`str`): Mime type of the content of the file, either "application/pdf"
             or "application/zip".
@@ -51,17 +61,21 @@ class InlineQueryResultDocument(InlineQueryResult):
     Args:
         id (:obj:`str`): Unique identifier for this result, 1-64 bytes.
         title (:obj:`str`): Title for the result.
-        caption (:obj:`str`, optional): Caption, 0-200 characters
+        caption (:obj:`str`, optional): Caption of the document to be sent, 0-1024 characters
+            after entities parsing.
         parse_mode (:obj:`str`, optional): Send Markdown or HTML, if you want Telegram apps to show
             bold, italic, fixed-width text or inline URLs in the media caption. See the constants
             in :class:`telegram.ParseMode` for the available modes.
+        caption_entities (List[:class:`telegram.MessageEntity`], optional): List of special
+            entities that appear in the caption, which can be specified instead of
+            :attr:`parse_mode`.
         document_url (:obj:`str`): A valid URL for the file.
         mime_type (:obj:`str`): Mime type of the content of the file, either "application/pdf"
             or "application/zip".
         description (:obj:`str`, optional): Short description of the result.
-        reply_markup (:class:`telegram.InlineKeyboardMarkup`): Optional. Inline keyboard attached
+        reply_markup (:class:`telegram.InlineKeyboardMarkup`, optional): Inline keyboard attached
             to the message.
-        input_message_content (:class:`telegram.InputMessageContent`): Optional. Content of the
+        input_message_content (:class:`telegram.InputMessageContent`, optional): Content of the
             message to be sent instead of the file.
         thumb_url (:obj:`str`, optional): URL of the thumbnail (jpeg only) for the file.
         thumb_width (:obj:`int`, optional): Thumbnail width.
@@ -70,40 +84,36 @@ class InlineQueryResultDocument(InlineQueryResult):
 
     """
 
-    def __init__(self,
-                 id,
-                 document_url,
-                 title,
-                 mime_type,
-                 caption=None,
-                 description=None,
-                 reply_markup=None,
-                 input_message_content=None,
-                 thumb_url=None,
-                 thumb_width=None,
-                 thumb_height=None,
-                 parse_mode=None,
-                 **kwargs):
+    def __init__(
+        self,
+        id: str,  # pylint: disable=W0622
+        document_url: str,
+        title: str,
+        mime_type: str,
+        caption: str = None,
+        description: str = None,
+        reply_markup: 'ReplyMarkup' = None,
+        input_message_content: 'InputMessageContent' = None,
+        thumb_url: str = None,
+        thumb_width: int = None,
+        thumb_height: int = None,
+        parse_mode: Union[str, DefaultValue] = DEFAULT_NONE,
+        caption_entities: Union[Tuple[MessageEntity, ...], List[MessageEntity]] = None,
+        **_kwargs: Any,
+    ):
         # Required
-        super(InlineQueryResultDocument, self).__init__('document', id)
+        super().__init__('document', id)
         self.document_url = document_url
         self.title = title
         self.mime_type = mime_type
 
         # Optionals
-        if caption:
-            self.caption = caption
-        if parse_mode:
-            self.parse_mode = parse_mode
-        if description:
-            self.description = description
-        if reply_markup:
-            self.reply_markup = reply_markup
-        if input_message_content:
-            self.input_message_content = input_message_content
-        if thumb_url:
-            self.thumb_url = thumb_url
-        if thumb_width:
-            self.thumb_width = thumb_width
-        if thumb_height:
-            self.thumb_height = thumb_height
+        self.caption = caption
+        self.parse_mode = parse_mode
+        self.caption_entities = caption_entities
+        self.description = description
+        self.reply_markup = reply_markup
+        self.input_message_content = input_message_content
+        self.thumb_url = thumb_url
+        self.thumb_width = thumb_width
+        self.thumb_height = thumb_height

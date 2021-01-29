@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2018
+# Copyright (C) 2015-2020
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,23 +16,38 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
+import datetime
 import os
-import sys
+import re
 from collections import defaultdict
 from queue import Queue
 from threading import Thread, Event
 from time import sleep
 
 import pytest
+import pytz
 
-from telegram import Bot
-from telegram.ext import Dispatcher, JobQueue, Updater
+from telegram import (
+    Bot,
+    Message,
+    User,
+    Chat,
+    MessageEntity,
+    Update,
+    InlineQuery,
+    CallbackQuery,
+    ShippingQuery,
+    PreCheckoutQuery,
+    ChosenInlineResult,
+)
+from telegram.ext import Dispatcher, JobQueue, Updater, MessageFilter, Defaults, UpdateFilter
+from telegram.error import BadRequest
 from tests.bots import get_bot
 
-TRAVIS = os.getenv('TRAVIS', False)
+GITHUB_ACTION = os.getenv('GITHUB_ACTION', False)
 
-if TRAVIS:
-    pytest_plugins = ['tests.travis_fold']
+if GITHUB_ACTION:
+    pytest_plugins = ['tests.plugin_github_group']
 
 # THIS KEY IS OBVIOUSLY COMPROMISED
 # DO NOT USE IN PRODUCTION!
@@ -46,7 +61,36 @@ def bot_info():
 
 @pytest.fixture(scope='session')
 def bot(bot_info):
-    return Bot(bot_info['token'], private_key=PRIVATE_KEY)
+    return make_bot(bot_info)
+
+
+DEFAULT_BOTS = {}
+
+
+@pytest.fixture(scope='function')
+def default_bot(request, bot_info):
+    param = request.param if hasattr(request, 'param') else {}
+
+    defaults = Defaults(**param)
+    default_bot = DEFAULT_BOTS.get(defaults)
+    if default_bot:
+        return default_bot
+    else:
+        default_bot = make_bot(bot_info, **{'defaults': defaults})
+        DEFAULT_BOTS[defaults] = default_bot
+        return default_bot
+
+
+@pytest.fixture(scope='function')
+def tz_bot(timezone, bot_info):
+    defaults = Defaults(tzinfo=timezone)
+    default_bot = DEFAULT_BOTS.get(defaults)
+    if default_bot:
+        return default_bot
+    else:
+        default_bot = make_bot(bot_info, **{'defaults': defaults})
+        DEFAULT_BOTS[defaults] = default_bot
+        return default_bot
 
 
 @pytest.fixture(scope='session')
@@ -55,8 +99,8 @@ def chat_id(bot_info):
 
 
 @pytest.fixture(scope='session')
-def group_id(bot_info):
-    return bot_info['group_id']
+def super_group_id(bot_info):
+    return bot_info['super_group_id']
 
 
 @pytest.fixture(scope='session')
@@ -72,7 +116,8 @@ def provider_token(bot_info):
 def create_dp(bot):
     # Dispatcher is heavy to init (due to many threads and such) so we have a single session
     # scoped one here, but before each test, reset it (dp fixture below)
-    dispatcher = Dispatcher(bot, Queue(), job_queue=JobQueue(bot), workers=2)
+    dispatcher = Dispatcher(bot, Queue(), job_queue=JobQueue(), workers=2, use_context=False)
+    dispatcher.job_queue.set_dispatcher(dispatcher)
     thr = Thread(target=dispatcher.start)
     thr.start()
     sleep(2)
@@ -96,13 +141,17 @@ def dp(_dp):
         _dp.update_queue.get(False)
     _dp.chat_data = defaultdict(dict)
     _dp.user_data = defaultdict(dict)
+    _dp.bot_data = {}
+    _dp.persistence = None
     _dp.handlers = {}
     _dp.groups = []
-    _dp.error_handlers = []
+    _dp.error_handlers = {}
     _dp.__stop_event = Event()
     _dp.__exception_event = Event()
     _dp.__async_queue = Queue()
     _dp.__async_threads = set()
+    _dp.persistence = None
+    _dp.use_context = False
     if _dp._Dispatcher__singleton_semaphore.acquire(blocking=0):
         Dispatcher._set_singleton(_dp)
     yield _dp
@@ -110,8 +159,15 @@ def dp(_dp):
 
 
 @pytest.fixture(scope='function')
+def cdp(dp):
+    dp.use_context = True
+    yield dp
+    dp.use_context = False
+
+
+@pytest.fixture(scope='function')
 def updater(bot):
-    up = Updater(bot=bot, workers=2)
+    up = Updater(bot=bot, workers=2, use_context=False)
     yield up
     if up.running:
         up.stop()
@@ -132,6 +188,154 @@ def class_thumb_file():
 
 
 def pytest_configure(config):
-    if sys.version_info >= (3,):
-        config.addinivalue_line('filterwarnings', 'ignore::ResourceWarning')
-        # TODO: Write so good code that we don't need to ignore ResourceWarnings anymore
+    config.addinivalue_line('filterwarnings', 'ignore::ResourceWarning')
+    # TODO: Write so good code that we don't need to ignore ResourceWarnings anymore
+
+
+def make_bot(bot_info, **kwargs):
+    return Bot(bot_info['token'], private_key=PRIVATE_KEY, **kwargs)
+
+
+CMD_PATTERN = re.compile(r'/[\da-z_]{1,32}(?:@\w{1,32})?')
+DATE = datetime.datetime.now()
+
+
+def make_message(text, **kwargs):
+    """
+    Testing utility factory to create a fake ``telegram.Message`` with
+    reasonable defaults for mimicking a real message.
+    :param text: (str) message text
+    :return: a (fake) ``telegram.Message``
+    """
+    return Message(
+        message_id=1,
+        from_user=kwargs.pop('user', User(id=1, first_name='', is_bot=False)),
+        date=kwargs.pop('date', DATE),
+        chat=kwargs.pop('chat', Chat(id=1, type='')),
+        text=text,
+        bot=kwargs.pop('bot', make_bot(get_bot())),
+        **kwargs,
+    )
+
+
+def make_command_message(text, **kwargs):
+    """
+    Testing utility factory to create a message containing a single telegram
+    command.
+    Mimics the Telegram API in that it identifies commands within the message
+    and tags the returned ``Message`` object with the appropriate ``MessageEntity``
+    tag (but it does this only for commands).
+
+    :param text: (str) message text containing (or not) the command
+    :return: a (fake) ``telegram.Message`` containing only the command
+    """
+
+    match = re.search(CMD_PATTERN, text)
+    entities = (
+        [
+            MessageEntity(
+                type=MessageEntity.BOT_COMMAND, offset=match.start(0), length=len(match.group(0))
+            )
+        ]
+        if match
+        else []
+    )
+
+    return make_message(text, entities=entities, **kwargs)
+
+
+def make_message_update(message, message_factory=make_message, edited=False, **kwargs):
+    """
+    Testing utility factory to create an update from a message, as either a
+    ``telegram.Message`` or a string. In the latter case ``message_factory``
+    is used to convert ``message`` to a ``telegram.Message``.
+    :param message: either a ``telegram.Message`` or a string with the message text
+    :param message_factory: function to convert the message text into a ``telegram.Message``
+    :param edited: whether the message should be stored as ``edited_message`` (vs. ``message``)
+    :return: ``telegram.Update`` with the given message
+    """
+    if not isinstance(message, Message):
+        message = message_factory(message, **kwargs)
+    update_kwargs = {'message' if not edited else 'edited_message': message}
+    return Update(0, **update_kwargs)
+
+
+def make_command_update(message, edited=False, **kwargs):
+    """
+    Testing utility factory to create an update from a message that potentially
+    contains a command. See ``make_command_message`` for more details.
+    :param message: message potentially containing a command
+    :param edited: whether the message should be stored as ``edited_message`` (vs. ``message``)
+    :return: ``telegram.Update`` with the given message
+    """
+    return make_message_update(message, make_command_message, edited, **kwargs)
+
+
+@pytest.fixture(
+    scope='class',
+    params=[{'class': MessageFilter}, {'class': UpdateFilter}],
+    ids=['MessageFilter', 'UpdateFilter'],
+)
+def mock_filter(request):
+    class MockFilter(request.param['class']):
+        def __init__(self):
+            self.tested = False
+
+        def filter(self, _):
+            self.tested = True
+
+    return MockFilter()
+
+
+def get_false_update_fixture_decorator_params():
+    message = Message(1, DATE, Chat(1, ''), from_user=User(1, '', False), text='test')
+    params = [
+        {'callback_query': CallbackQuery(1, User(1, '', False), 'chat', message=message)},
+        {'channel_post': message},
+        {'edited_channel_post': message},
+        {'inline_query': InlineQuery(1, User(1, '', False), '', '')},
+        {'chosen_inline_result': ChosenInlineResult('id', User(1, '', False), '')},
+        {'shipping_query': ShippingQuery('id', User(1, '', False), '', None)},
+        {'pre_checkout_query': PreCheckoutQuery('id', User(1, '', False), '', 0, '')},
+        {'callback_query': CallbackQuery(1, User(1, '', False), 'chat')},
+    ]
+    ids = tuple(key for kwargs in params for key in kwargs)
+    return {'params': params, 'ids': ids}
+
+
+@pytest.fixture(scope='function', **get_false_update_fixture_decorator_params())
+def false_update(request):
+    return Update(update_id=1, **request.param)
+
+
+@pytest.fixture(params=['Europe/Berlin', 'Asia/Singapore', 'UTC'])
+def tzinfo(request):
+    return pytz.timezone(request.param)
+
+
+@pytest.fixture()
+def timezone(tzinfo):
+    return tzinfo
+
+
+def expect_bad_request(func, message, reason):
+    """
+    Wrapper for testing bot functions expected to result in an :class:`telegram.error.BadRequest`.
+    Makes it XFAIL, if the specified error message is present.
+
+    Args:
+        func: The callable to be executed.
+        message: The expected message of the bad request error. If another message is present,
+            the error will be reraised.
+        reason: Explanation for the XFAIL.
+
+    Returns:
+        On success, returns the return value of :attr:`func`
+    """
+    try:
+        return func()
+    except BadRequest as e:
+        if message in str(e):
+            pytest.xfail(f'{reason}. {e}')
+        else:
+            raise e
