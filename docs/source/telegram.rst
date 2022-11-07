@@ -1,6 +1,3 @@
-.. include:: telegram.ext.rst
-
-
 telegram package
 ================
 
@@ -10,11 +7,29 @@ telegram package
     telegram.audio
     telegram.bot
     telegram.botcommand
+    telegram.botcommandscope
+    telegram.botcommandscopedefault
+    telegram.botcommandscopeallprivatechats
+    telegram.botcommandscopeallgroupchats
+    telegram.botcommandscopeallchatadministrators
+    telegram.botcommandscopechat
+    telegram.botcommandscopechatadministrators
+    telegram.botcommandscopechatmember
     telegram.callbackquery
     telegram.chat
+    telegram.chatadministratorrights
     telegram.chataction
+    telegram.chatinvitelink
+    telegram.chatjoinrequest
     telegram.chatlocation
     telegram.chatmember
+    telegram.chatmemberowner
+    telegram.chatmemberadministrator
+    telegram.chatmembermember
+    telegram.chatmemberrestricted
+    telegram.chatmemberleft
+    telegram.chatmemberbanned
+    telegram.chatmemberupdated
     telegram.chatpermissions
     telegram.chatphoto
     telegram.constants
@@ -37,7 +52,12 @@ telegram package
     telegram.keyboardbuttonpolltype
     telegram.location
     telegram.loginurl
+    telegram.menubutton
+    telegram.menubuttoncommands
+    telegram.menubuttondefault
+    telegram.menubuttonwebapp
     telegram.message
+    telegram.messageautodeletetimerchanged
     telegram.messageid
     telegram.messageentity
     telegram.parsemode
@@ -49,14 +69,25 @@ telegram package
     telegram.replykeyboardremove
     telegram.replykeyboardmarkup
     telegram.replymarkup
+    telegram.sentwebappmessage
     telegram.telegramobject
     telegram.update
     telegram.user
     telegram.userprofilephotos
     telegram.venue
     telegram.video
+    telegram.videochatended
+    telegram.videochatparticipantsinvited
+    telegram.videochatscheduled
+    telegram.videochatstarted
     telegram.videonote
     telegram.voice
+    telegram.voicechatstarted
+    telegram.voicechatended
+    telegram.voicechatscheduled
+    telegram.voicechatparticipantsinvited
+    telegram.webappdata
+    telegram.webappinfo
     telegram.webhookinfo
 
 Stickers
@@ -100,6 +131,7 @@ Inline Mode
     telegram.inputlocationmessagecontent
     telegram.inputvenuemessagecontent
     telegram.inputcontactmessagecontent
+    telegram.inputinvoicemessagecontent
     telegram.choseninlineresult
 
 Payments
@@ -132,14 +164,18 @@ Passport
 
     telegram.passportelementerror
     telegram.passportelementerrorfile
+    telegram.passportelementerrorfiles
     telegram.passportelementerrorreverseside
     telegram.passportelementerrorfrontside
-    telegram.passportelementerrorfiles
     telegram.passportelementerrordatafield
-    telegram.passportelementerrorfile
+    telegram.passportelementerrorselfie
+    telegram.passportelementerrortranslationfile
+    telegram.passportelementerrortranslationfiles
+    telegram.passportelementerrorunspecified
     telegram.credentials
     telegram.datacredentials
     telegram.securedata
+    telegram.securevalue
     telegram.filecredentials
     telegram.iddocumentdata
     telegram.personaldetails
@@ -149,4 +185,12 @@ Passport
     telegram.encryptedpassportelement
     telegram.encryptedcredentials
 
-.. include:: telegram.utils.rst
+utils
+-----
+
+.. toctree::
+
+    telegram.utils.helpers
+    telegram.utils.promise
+    telegram.utils.request
+    telegram.utils.types

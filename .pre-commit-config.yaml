@@ -1,27 +1,64 @@
 # Make sure that
 #   * the revs specified here match requirements-dev.txt
-#   * the makefile checks the same files as pre-commit
+#   * the additional_dependencies here match requirements.txt
+
+ci:
+    # We currently only need this behavior on the v13.x branch were we have the vendored urllib
+    submodules: true
+
 repos:
 -   repo: https://github.com/psf/black
-    rev: 20.8b1
+    rev: 22.3.0
     hooks:
     -   id: black
         args:
         - --diff
         - --check
 -   repo: https://gitlab.com/pycqa/flake8
-    rev: 3.8.4
+    rev: 3.9.2
     hooks:
     -   id: flake8
 -   repo: https://github.com/PyCQA/pylint
-    rev: pylint-2.6.0
+    rev: v2.8.3
     hooks:
     -   id: pylint
         files: ^(telegram|examples)/.*\.py$
         args:
-        - --rcfile=setup.cfg
+          - --rcfile=setup.cfg
+        additional_dependencies:
+          - certifi
+          - tornado==6.1
+          - APScheduler==3.6.3
+          - cachetools==4.2.2
+          - . # this basically does `pip install -e .`
 -   repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v0.790
+    rev: v0.812
     hooks:
     -   id: mypy
-        files: ^(telegram|examples)/.*\.py$
+        name: mypy-ptb
+        files: ^telegram/.*\.py$
+        additional_dependencies:
+          - certifi
+          - tornado==6.1
+          - APScheduler==3.6.3
+          - cachetools==4.2.2
+          - . # this basically does `pip install -e .`
+    -   id: mypy
+        name: mypy-examples
+        files: ^examples/.*\.py$
+        args:
+          - --no-strict-optional
+          - --follow-imports=silent
+        additional_dependencies:
+          - certifi
+          - tornado==6.1
+          - APScheduler==3.6.3
+          - cachetools==4.2.2
+          - . # this basically does `pip install -e .`
+-   repo: https://github.com/asottile/pyupgrade
+    rev: v2.19.1
+    hooks:
+    -   id: pyupgrade
+        files: ^(telegram|examples|tests)/.*\.py$
+        args:
+          - --py36-plus

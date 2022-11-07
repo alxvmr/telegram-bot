@@ -2,7 +2,7 @@
 # pylint: disable=W0622,E0611
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -23,8 +23,10 @@ import imghdr
 import logging
 import mimetypes
 import os
-from typing import IO, Optional, Tuple
+from typing import IO, Optional, Tuple, Union
 from uuid import uuid4
+
+from telegram.utils.deprecate import set_new_attribute_deprecated
 
 DEFAULT_MIME_TYPE = 'application/octet-stream'
 logger = logging.getLogger(__name__)
@@ -33,13 +35,9 @@ logger = logging.getLogger(__name__)
 class InputFile:
     """This object represents a Telegram InputFile.
 
-    Attributes:
-        input_file_content (:obj:`bytes`): The binary content of the file to send.
-        filename (:obj:`str`): Optional. Filename for the file to be sent.
-        attach (:obj:`str`): Optional. Attach id for sending multiple files.
-
     Args:
-        obj (:obj:`File handler`): An open file descriptor.
+        obj (:obj:`File handler` | :obj:`bytes`): An open file descriptor or the files content as
+            bytes.
         filename (:obj:`str`, optional): Filename for this InputFile.
         attach (:obj:`bool`, optional): Whether this should be send as one file or is part of a
             collection of files.
@@ -47,17 +45,27 @@ class InputFile:
     Raises:
         TelegramError
 
+    Attributes:
+        input_file_content (:obj:`bytes`): The binary content of the file to send.
+        filename (:obj:`str`): Optional. Filename for the file to be sent.
+        attach (:obj:`str`): Optional. Attach id for sending multiple files.
+
     """
 
-    def __init__(self, obj: IO, filename: str = None, attach: bool = None):
+    __slots__ = ('filename', 'attach', 'input_file_content', 'mimetype', '__dict__')
+
+    def __init__(self, obj: Union[IO, bytes], filename: str = None, attach: bool = None):
         self.filename = None
-        self.input_file_content = obj.read()
+        if isinstance(obj, bytes):
+            self.input_file_content = obj
+        else:
+            self.input_file_content = obj.read()
         self.attach = 'attached' + uuid4().hex if attach else None
 
         if filename:
             self.filename = filename
-        elif hasattr(obj, 'name') and not isinstance(obj.name, int):
-            self.filename = os.path.basename(obj.name)
+        elif hasattr(obj, 'name') and not isinstance(obj.name, int):  # type: ignore[union-attr]
+            self.filename = os.path.basename(obj.name)  # type: ignore[union-attr]
 
         image_mime_type = self.is_image(self.input_file_content)
         if image_mime_type:
@@ -70,8 +78,11 @@ class InputFile:
         if not self.filename:
             self.filename = self.mimetype.replace('/', '.')
 
+    def __setattr__(self, key: str, value: object) -> None:
+        set_new_attribute_deprecated(self, key, value)
+
     @property
-    def field_tuple(self) -> Tuple[str, bytes, str]:
+    def field_tuple(self) -> Tuple[str, bytes, str]:  # skipcq: PY-D0003
         return self.filename, self.input_file_content, self.mimetype
 
     @staticmethod
@@ -98,10 +109,11 @@ class InputFile:
             return None
 
     @staticmethod
-    def is_file(obj: object) -> bool:
+    def is_file(obj: object) -> bool:  # skipcq: PY-D0003
         return hasattr(obj, 'read')
 
     def to_dict(self) -> Optional[str]:
+        """See :meth:`telegram.TelegramObject.to_dict`."""
         if self.attach:
             return 'attach://' + self.attach
         return None

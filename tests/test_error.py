@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -32,6 +32,7 @@ from telegram.error import (
     RetryAfter,
     Conflict,
 )
+from telegram.ext.callbackdatacache import InvalidCallbackData
 
 
 class TestErrors:
@@ -112,10 +113,10 @@ class TestErrors:
             (RetryAfter(12), ["message", "retry_after"]),
             (Conflict("test message"), ["message"]),
             (TelegramDecryptionError("test message"), ["message"]),
+            (InvalidCallbackData('test data'), ['callback_data']),
         ],
     )
     def test_errors_pickling(self, exception, attributes):
-        print(exception)
         pickled = pickle.dumps(exception)
         unpickled = pickle.loads(pickled)
         assert type(unpickled) is type(exception)
@@ -132,7 +133,7 @@ class TestErrors:
         """
 
         def make_assertion(cls):
-            assert {sc for sc in cls.__subclasses__()} == covered_subclasses[cls]
+            assert set(cls.__subclasses__()) == covered_subclasses[cls]
             for subcls in cls.__subclasses__():
                 make_assertion(subcls)
 
@@ -147,6 +148,7 @@ class TestErrors:
                     RetryAfter,
                     Conflict,
                     TelegramDecryptionError,
+                    InvalidCallbackData,
                 },
                 NetworkError: {BadRequest, TimedOut},
             }

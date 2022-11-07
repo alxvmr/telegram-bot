@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -22,9 +22,10 @@ from pathlib import Path
 import pytest
 from flaky import flaky
 
-from telegram import Audio, Voice, TelegramError, MessageEntity
+from telegram import Audio, Voice, TelegramError, MessageEntity, Bot
 from telegram.error import BadRequest
 from telegram.utils.helpers import escape_markdown
+from tests.conftest import check_shortcut_call, check_shortcut_signature, check_defaults_handling
 
 
 @pytest.fixture(scope='function')
@@ -45,11 +46,19 @@ class TestVoice:
     mime_type = 'audio/ogg'
     file_size = 9199
 
-    caption = u'Test *voice*'
+    caption = 'Test *voice*'
     voice_file_url = 'https://python-telegram-bot.org/static/testfiles/telegram.ogg'
 
     voice_file_id = '5a3128a4d2a04750b5b58397f3b5e812'
     voice_file_unique_id = 'adc3145fd2e84d95b64d68eaa22aa33e'
+
+    def test_slot_behaviour(self, voice, recwarn, mro_slots):
+        for attr in voice.__slots__:
+            assert getattr(voice, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not voice.__dict__, f"got missing slot(s): {voice.__dict__}"
+        assert len(mro_slots(voice)) == len(set(mro_slots(voice))), "duplicate slot"
+        voice.custom, voice.duration = 'should give warning', self.duration
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_creation(self, voice):
         # Make sure file has been uploaded.
@@ -65,7 +74,6 @@ class TestVoice:
         assert voice.file_size == self.file_size
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_all_args(self, bot, chat_id, voice_file, voice):
         message = bot.send_voice(
             chat_id,
@@ -73,6 +81,7 @@ class TestVoice:
             duration=self.duration,
             caption=self.caption,
             disable_notification=False,
+            protect_content=True,
             parse_mode='Markdown',
         )
 
@@ -85,9 +94,18 @@ class TestVoice:
         assert message.voice.mime_type == voice.mime_type
         assert message.voice.file_size == voice.file_size
         assert message.caption == self.caption.replace('*', '')
+        assert message.has_protected_content
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
+    def test_send_voice_custom_filename(self, bot, chat_id, voice_file, monkeypatch):
+        def make_assertion(url, data, **kwargs):
+            return data['voice'].filename == 'custom_filename'
+
+        monkeypatch.setattr(bot.request, 'post', make_assertion)
+
+        assert bot.send_voice(chat_id, voice_file, filename='custom_filename')
+
+    @flaky(3, 1)
     def test_get_and_download(self, bot, voice):
         new_file = bot.get_file(voice.file_id)
 
@@ -101,7 +119,6 @@ class TestVoice:
         assert os.path.isfile('telegram.ogg')
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_ogg_url_file(self, bot, chat_id, voice):
         message = bot.sendVoice(chat_id, self.voice_file_url, duration=self.duration)
 
@@ -115,7 +132,6 @@ class TestVoice:
         assert message.voice.file_size == voice.file_size
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_resend(self, bot, chat_id, voice):
         message = bot.sendVoice(chat_id, voice.file_id)
 
@@ -130,7 +146,6 @@ class TestVoice:
         assert message
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_voice_caption_entities(self, bot, chat_id, voice_file):
         test_string = 'Italic Bold Code'
         entities = [
@@ -146,7 +161,6 @@ class TestVoice:
         assert message.caption_entities == entities
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize('default_bot', [{'parse_mode': 'Markdown'}], indirect=True)
     def test_send_voice_default_parse_mode_1(self, default_bot, chat_id, voice):
         test_string = 'Italic Bold Code'
@@ -157,7 +171,6 @@ class TestVoice:
         assert message.caption == test_string
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize('default_bot', [{'parse_mode': 'Markdown'}], indirect=True)
     def test_send_voice_default_parse_mode_2(self, default_bot, chat_id, voice):
         test_markdown_string = '_Italic_ *Bold* `Code`'
@@ -169,7 +182,6 @@ class TestVoice:
         assert message.caption_markdown == escape_markdown(test_markdown_string)
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize('default_bot', [{'parse_mode': 'Markdown'}], indirect=True)
     def test_send_voice_default_parse_mode_3(self, default_bot, chat_id, voice):
         test_markdown_string = '_Italic_ *Bold* `Code`'
@@ -183,7 +195,7 @@ class TestVoice:
     def test_send_voice_local_files(self, monkeypatch, bot, chat_id):
         # For just test that the correct paths are passed as we have no local bot API set up
         test_flag = False
-        expected = f"file://{Path.cwd() / 'tests/data/telegram.jpg'}"
+        expected = (Path.cwd() / 'tests/data/telegram.jpg/').as_uri()
         file = 'tests/data/telegram.jpg'
 
         def make_assertion(_, data, *args, **kwargs):
@@ -193,9 +205,9 @@ class TestVoice:
         monkeypatch.setattr(bot, '_post', make_assertion)
         bot.send_voice(chat_id, file)
         assert test_flag
+        monkeypatch.delattr(bot, '_post')
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize(
         'default_bot,custom',
         [
@@ -257,13 +269,11 @@ class TestVoice:
         assert voice_dict['file_size'] == voice.file_size
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_error_send_empty_file(self, bot, chat_id):
         with pytest.raises(TelegramError):
             bot.sendVoice(chat_id, open(os.devnull, 'rb'))
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_error_send_empty_file_id(self, bot, chat_id):
         with pytest.raises(TelegramError):
             bot.sendVoice(chat_id, '')
@@ -273,10 +283,14 @@ class TestVoice:
             bot.sendVoice(chat_id)
 
     def test_get_file_instance_method(self, monkeypatch, voice):
-        def test(*args, **kwargs):
-            return args[1] == voice.file_id
+        def make_assertion(*_, **kwargs):
+            return kwargs['file_id'] == voice.file_id
 
-        monkeypatch.setattr('telegram.Bot.get_file', test)
+        assert check_shortcut_signature(Voice.get_file, Bot.get_file, ['file_id'], [])
+        assert check_shortcut_call(voice.get_file, voice.bot, 'get_file')
+        assert check_defaults_handling(voice.get_file, voice.bot)
+
+        monkeypatch.setattr(voice.bot, 'get_file', make_assertion)
         assert voice.get_file()
 
     def test_equality(self, voice):

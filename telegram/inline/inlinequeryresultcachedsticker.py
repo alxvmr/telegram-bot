@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -32,15 +32,6 @@ class InlineQueryResultCachedSticker(InlineQueryResult):
     be sent by the user. Alternatively, you can use :attr:`input_message_content` to send a
     message with the specified content instead of the sticker.
 
-    Attributes:
-        type (:obj:`str`): 'sticker`.
-        id (:obj:`str`): Unique identifier for this result, 1-64 bytes.
-        sticker_file_id (:obj:`str`): A valid file identifier of the sticker.
-        reply_markup (:class:`telegram.InlineKeyboardMarkup`): Optional. Inline keyboard attached
-            to the message.
-        input_message_content (:class:`telegram.InputMessageContent`): Optional. Content of the
-            message to be sent instead of the sticker.
-
     Args:
         id (:obj:`str`): Unique identifier for this result, 1-64 bytes.
         sticker_file_id (:obj:`str`): A valid file identifier of the sticker.
@@ -50,7 +41,18 @@ class InlineQueryResultCachedSticker(InlineQueryResult):
             message to be sent instead of the sticker.
         **kwargs (:obj:`dict`): Arbitrary keyword arguments.
 
+    Attributes:
+        type (:obj:`str`): 'sticker`.
+        id (:obj:`str`): Unique identifier for this result, 1-64 bytes.
+        sticker_file_id (:obj:`str`): A valid file identifier of the sticker.
+        reply_markup (:class:`telegram.InlineKeyboardMarkup`): Optional. Inline keyboard attached
+            to the message.
+        input_message_content (:class:`telegram.InputMessageContent`): Optional. Content of the
+            message to be sent instead of the sticker.
+
     """
+
+    __slots__ = ('reply_markup', 'input_message_content', 'sticker_file_id')
 
     def __init__(
         self,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -32,17 +32,22 @@ from telegram.ext import (
     CallbackContext,
     JobQueue,
     BasePersistence,
+    ContextTypes,
 )
 from telegram.ext.dispatcher import run_async, Dispatcher, DispatcherHandlerStop
 from telegram.utils.deprecate import TelegramDeprecationWarning
+from telegram.utils.helpers import DEFAULT_FALSE
 from tests.conftest import create_dp
 from collections import defaultdict
 
 
 @pytest.fixture(scope='function')
 def dp2(bot):
-    for dp in create_dp(bot):
-        yield dp
+    yield from create_dp(bot)
+
+
+class CustomContext(CallbackContext):
+    pass
 
 
 class TestDispatcher:
@@ -51,6 +56,25 @@ class TestDispatcher:
     )
     received = None
     count = 0
+
+    def test_slot_behaviour(self, dp2, recwarn, mro_slots):
+        for at in dp2.__slots__:
+            at = f"_Dispatcher{at}" if at.startswith('__') and not at.endswith('__') else at
+            assert getattr(dp2, at, 'err') != 'err', f"got extra slot '{at}'"
+        assert not dp2.__dict__, f"got missing slot(s): {dp2.__dict__}"
+        assert len(mro_slots(dp2)) == len(set(mro_slots(dp2))), "duplicate slot"
+        dp2.custom, dp2.running = 'should give warning', dp2.running
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
+
+        class CustomDispatcher(Dispatcher):
+            pass  # Tests that setting custom attrs of Dispatcher subclass doesn't raise warning
+
+        a = CustomDispatcher(None, None)
+        a.my_custom = 'no error!'
+        assert len(recwarn) == 1
+
+        dp2.__setattr__('__test', 'mangled success')
+        assert getattr(dp2, '_Dispatcher__test', 'e') == 'mangled success', "mangling failed"
 
     @pytest.fixture(autouse=True, name='reset')
     def reset_fixture(self):
@@ -96,6 +120,14 @@ class TestDispatcher:
             and isinstance(context.error, TelegramError)
         ):
             self.received = context.error.message
+
+    def test_less_than_one_worker_warning(self, dp, recwarn):
+        Dispatcher(dp.bot, dp.update_queue, job_queue=dp.job_queue, workers=0, use_context=True)
+        assert len(recwarn) == 1
+        assert (
+            str(recwarn[0].message)
+            == 'Asynchronous callbacks can not be processed without at least one worker thread.'
+        )
 
     def test_one_context_per_update(self, cdp):
         def one(update, context):
@@ -145,6 +177,7 @@ class TestDispatcher:
                 self.store_user_data = False
                 self.store_chat_data = False
                 self.store_bot_data = False
+                self.store_callback_data = False
 
         with pytest.raises(
             TypeError, match='persistence must be based on telegram.ext.BasePersistence'
@@ -567,9 +600,16 @@ class TestDispatcher:
                 self.store_user_data = True
                 self.store_chat_data = True
                 self.store_bot_data = True
+                self.store_callback_data = True
+
+            def get_callback_data(self):
+                return None
+
+            def update_callback_data(self, data):
+                raise Exception
 
             def get_bot_data(self):
-                return dict()
+                return {}
 
             def update_bot_data(self, data):
                 raise Exception
@@ -620,7 +660,7 @@ class TestDispatcher:
         dp.add_handler(CommandHandler('start', start1))
         dp.add_error_handler(error)
         dp.process_update(update)
-        assert increment == ["error", "error", "error"]
+        assert increment == ["error", "error", "error", "error"]
 
     def test_flow_stop_in_error_handler(self, dp, bot):
         passed = []
@@ -675,8 +715,7 @@ class TestDispatcher:
         assert self.received == 'Unauthorized.'
 
     def test_sensible_worker_thread_names(self, dp2):
-        thread_names = [thread.name for thread in getattr(dp2, '_Dispatcher__async_threads')]
-        print(thread_names)
+        thread_names = [thread.name for thread in dp2._Dispatcher__async_threads]
         for thread_name in thread_names:
             assert thread_name.startswith(f"Bot:{dp2.bot.id}:worker:")
 
@@ -689,13 +728,17 @@ class TestDispatcher:
     def test_error_while_persisting(self, cdp, monkeypatch):
         class OwnPersistence(BasePersistence):
             def __init__(self):
-                super(OwnPersistence, self).__init__()
+                super().__init__()
                 self.store_user_data = True
                 self.store_chat_data = True
                 self.store_bot_data = True
+                self.store_callback_data = True
 
             def update(self, data):
                 raise Exception('PersistenceError')
+
+            def update_callback_data(self, data):
+                self.update(data)
 
             def update_bot_data(self, data):
                 self.update(data)
@@ -715,10 +758,22 @@ class TestDispatcher:
             def get_user_data(self):
                 pass
 
+            def get_callback_data(self):
+                pass
+
             def get_conversations(self, name):
                 pass
 
             def update_conversation(self, name, key, new_state):
+                pass
+
+            def refresh_bot_data(self, bot_data):
+                pass
+
+            def refresh_user_data(self, user_id, user_data):
+                pass
+
+            def refresh_chat_data(self, chat_id, chat_data):
                 pass
 
         def callback(update, context):
@@ -749,7 +804,7 @@ class TestDispatcher:
     def test_persisting_no_user_no_chat(self, cdp):
         class OwnPersistence(BasePersistence):
             def __init__(self):
-                super(OwnPersistence, self).__init__()
+                super().__init__()
                 self.store_user_data = True
                 self.store_chat_data = True
                 self.store_bot_data = True
@@ -781,6 +836,15 @@ class TestDispatcher:
             def get_chat_data(self):
                 pass
 
+            def refresh_bot_data(self, bot_data):
+                pass
+
+            def refresh_user_data(self, user_id, user_data):
+                pass
+
+            def refresh_chat_data(self, chat_id, chat_data):
+                pass
+
         def callback(update, context):
             pass
 
@@ -804,3 +868,155 @@ class TestDispatcher:
         assert cdp.persistence.test_flag_bot_data
         assert not cdp.persistence.test_flag_user_data
         assert cdp.persistence.test_flag_chat_data
+
+    def test_update_persistence_once_per_update(self, monkeypatch, dp):
+        def update_persistence(*args, **kwargs):
+            self.count += 1
+
+        def dummy_callback(*args):
+            pass
+
+        monkeypatch.setattr(dp, 'update_persistence', update_persistence)
+
+        for group in range(5):
+            dp.add_handler(MessageHandler(Filters.text, dummy_callback), group=group)
+
+        update = Update(1, message=Message(1, None, Chat(1, ''), from_user=None, text=None))
+        dp.process_update(update)
+        assert self.count == 0
+
+        update = Update(1, message=Message(1, None, Chat(1, ''), from_user=None, text='text'))
+        dp.process_update(update)
+        assert self.count == 1
+
+    def test_update_persistence_all_async(self, monkeypatch, dp):
+        def update_persistence(*args, **kwargs):
+            self.count += 1
+
+        def dummy_callback(*args, **kwargs):
+            pass
+
+        monkeypatch.setattr(dp, 'update_persistence', update_persistence)
+        monkeypatch.setattr(dp, 'run_async', dummy_callback)
+
+        for group in range(5):
+            dp.add_handler(
+                MessageHandler(Filters.text, dummy_callback, run_async=True), group=group
+            )
+
+        update = Update(1, message=Message(1, None, Chat(1, ''), from_user=None, text='Text'))
+        dp.process_update(update)
+        assert self.count == 0
+
+        dp.bot.defaults = Defaults(run_async=True)
+        try:
+            for group in range(5):
+                dp.add_handler(MessageHandler(Filters.text, dummy_callback), group=group)
+
+            update = Update(1, message=Message(1, None, Chat(1, ''), from_user=None, text='Text'))
+            dp.process_update(update)
+            assert self.count == 0
+        finally:
+            dp.bot.defaults = None
+
+    @pytest.mark.parametrize('run_async', [DEFAULT_FALSE, False])
+    def test_update_persistence_one_sync(self, monkeypatch, dp, run_async):
+        def update_persistence(*args, **kwargs):
+            self.count += 1
+
+        def dummy_callback(*args, **kwargs):
+            pass
+
+        monkeypatch.setattr(dp, 'update_persistence', update_persistence)
+        monkeypatch.setattr(dp, 'run_async', dummy_callback)
+
+        for group in range(5):
+            dp.add_handler(
+                MessageHandler(Filters.text, dummy_callback, run_async=True), group=group
+            )
+        dp.add_handler(MessageHandler(Filters.text, dummy_callback, run_async=run_async), group=5)
+
+        update = Update(1, message=Message(1, None, Chat(1, ''), from_user=None, text='Text'))
+        dp.process_update(update)
+        assert self.count == 1
+
+    @pytest.mark.parametrize('run_async,expected', [(DEFAULT_FALSE, 1), (False, 1), (True, 0)])
+    def test_update_persistence_defaults_async(self, monkeypatch, dp, run_async, expected):
+        def update_persistence(*args, **kwargs):
+            self.count += 1
+
+        def dummy_callback(*args, **kwargs):
+            pass
+
+        monkeypatch.setattr(dp, 'update_persistence', update_persistence)
+        monkeypatch.setattr(dp, 'run_async', dummy_callback)
+        dp.bot.defaults = Defaults(run_async=run_async)
+
+        try:
+            for group in range(5):
+                dp.add_handler(MessageHandler(Filters.text, dummy_callback), group=group)
+
+            update = Update(1, message=Message(1, None, Chat(1, ''), from_user=None, text='Text'))
+            dp.process_update(update)
+            assert self.count == expected
+        finally:
+            dp.bot.defaults = None
+
+    def test_custom_context_init(self, bot):
+        cc = ContextTypes(
+            context=CustomContext,
+            user_data=int,
+            chat_data=float,
+            bot_data=complex,
+        )
+
+        dispatcher = Dispatcher(bot, Queue(), context_types=cc)
+
+        assert isinstance(dispatcher.user_data[1], int)
+        assert isinstance(dispatcher.chat_data[1], float)
+        assert isinstance(dispatcher.bot_data, complex)
+
+    def test_custom_context_error_handler(self, bot):
+        def error_handler(_, context):
+            self.received = (
+                type(context),
+                type(context.user_data),
+                type(context.chat_data),
+                type(context.bot_data),
+            )
+
+        dispatcher = Dispatcher(
+            bot,
+            Queue(),
+            context_types=ContextTypes(
+                context=CustomContext, bot_data=int, user_data=float, chat_data=complex
+            ),
+        )
+        dispatcher.add_error_handler(error_handler)
+        dispatcher.add_handler(MessageHandler(Filters.all, self.callback_raise_error))
+
+        dispatcher.process_update(self.message_update)
+        sleep(0.1)
+        assert self.received == (CustomContext, float, complex, int)
+
+    def test_custom_context_handler_callback(self, bot):
+        def callback(_, context):
+            self.received = (
+                type(context),
+                type(context.user_data),
+                type(context.chat_data),
+                type(context.bot_data),
+            )
+
+        dispatcher = Dispatcher(
+            bot,
+            Queue(),
+            context_types=ContextTypes(
+                context=CustomContext, bot_data=int, user_data=float, chat_data=complex
+            ),
+        )
+        dispatcher.add_handler(MessageHandler(Filters.all, callback))
+
+        dispatcher.process_update(self.message_update)
+        sleep(0.1)
+        assert self.received == (CustomContext, float, complex, int)

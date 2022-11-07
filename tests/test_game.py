@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -44,6 +44,14 @@ class TestGame:
     ).decode('unicode-escape')
     text_entities = [MessageEntity(13, 17, MessageEntity.URL)]
     animation = Animation('blah', 'unique_id', 320, 180, 1)
+
+    def test_slot_behaviour(self, game, recwarn, mro_slots):
+        for attr in game.__slots__:
+            assert getattr(game, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not game.__dict__, f"got missing slot(s): {game.__dict__}"
+        assert len(mro_slots(game)) == len(set(mro_slots(game))), "duplicate slot"
+        game.custom, game.title = 'should give warning', self.title
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_de_json_required(self, bot):
         json_dict = {

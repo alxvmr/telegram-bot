@@ -2,12 +2,20 @@ Credits
 =======
 
 ``python-telegram-bot`` was originally created by
-`Leandro Toledo <https://github.com/leandrotoledo>`_ and is now maintained by `Hinrich Mahler <https://github.com/Bibo-Joshi>`_.
+`Leandro Toledo <https://github.com/leandrotoledo>`_.
+The current development team includes
+
+- `Hinrich Mahler <https://github.com/Bibo-Joshi>`_ (maintainer)
+- `Poolitzer <https://github.com/Poolitzer>`_ (community liaison)
+- `Shivam <https://github.com/Starry69>`_
+- `Harshil <https://github.com/harshil21>`_
+
 Emeritus maintainers include
 `Jannes Höke <https://github.com/jh0ker>`_ (`@jh0ker <https://t.me/jh0ker>`_ on Telegram),
 `Noam Meltzer <https://github.com/tsnoam>`_, `Pieter Schutz <https://github.com/eldinnie>`_ and `Jasmin Bom <https://github.com/jsmnbom>`_.
 
-The maintainers are actively supported by `Poolitzer <https://github.com/Poolitzer>`_ in terms of development and community liaison.
+Vendored packages
+-----------------
 
 We're vendoring urllib3 as part of ``python-telegram-bot`` which is distributed under the MIT
 license. For more info, full credits & license terms, the sources can be found here:
@@ -18,6 +26,7 @@ Contributors
 
 The following wonderful people contributed directly or indirectly to this project:
 
+- `Abshar <https://github.com/abxhr>`_
 - `Alateas <https://github.com/alateas>`_
 - `Ales Dokshanin <https://github.com/alesdokshanin>`_
 - `Ambro17 <https://github.com/Ambro17>`_
@@ -31,6 +40,7 @@ The following wonderful people contributed directly or indirectly to this projec
 - `daimajia <https://github.com/daimajia>`_
 - `Daniel Reed <https://github.com/nmlorg>`_
 - `D David Livingston <https://github.com/daviddl9>`_
+- `DonalDuck004 <https://github.com/DonalDuck004>`_
 - `Eana Hufwe <https://github.com/blueset>`_
 - `Ehsan Online <https://github.com/ehsanonline>`_
 - `Eli Gao <https://github.com/eligao>`_
@@ -49,6 +59,7 @@ The following wonderful people contributed directly or indirectly to this projec
 - `ihoru <https://github.com/ihoru>`_
 - `Jasmin Bom <https://github.com/jsmnbom>`_
 - `JASON0916 <https://github.com/JASON0916>`_
+- `Javad94 <https://github.com/javad94>`_
 - `jeffffc <https://github.com/jeffffc>`_
 - `Jelle Besseling <https://github.com/pingiun>`_
 - `jh0ker <https://github.com/jh0ker>`_
@@ -69,12 +80,14 @@ The following wonderful people contributed directly or indirectly to this projec
 - `naveenvhegde <https://github.com/naveenvhegde>`_
 - `neurrone <https://github.com/neurrone>`_
 - `NikitaPirate <https://github.com/NikitaPirate>`_
+- `Nikolai Krivenko <https://github.com/nkrivenko>`_
 - `njittam <https://github.com/njittam>`_
 - `Noam Meltzer <https://github.com/tsnoam>`_
 - `Oleg Shlyazhko <https://github.com/ollmer>`_
 - `Oleg Sushchenko <https://github.com/feuillemorte>`_
 - `Or Bin <https://github.com/OrBin>`_
 - `overquota <https://github.com/overquota>`_
+- `Paradox <https://github.com/paradox70>`_
 - `Patrick Hofmann <https://github.com/PH89>`_
 - `Paul Larsen <https://github.com/PaulSonOfLars>`_
 - `Pieter Schutz <https://github.com/eldinnie>`_
@@ -97,6 +110,7 @@ The following wonderful people contributed directly or indirectly to this projec
 - `Vorobjev Simon <https://github.com/simonvorobjev>`_
 - `Wagner Macedo <https://github.com/wagnerluis1982>`_
 - `wjt <https://github.com/wjt>`_
+- `zeroone2numeral2 <https://github.com/zeroone2numeral2>`_
 - `zeshuaro <https://github.com/zeshuaro>`_
 
 Please add yourself here alphabetically when you submit your first pull request.

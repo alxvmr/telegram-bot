@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -33,21 +33,17 @@ class MessageEntity(TelegramObject):
     usernames, URLs, etc.
 
     Objects of this class are comparable in terms of equality. Two objects of this class are
-    considered equal, if their :attr:`type`, :attr:`offset` and :attr`length` are equal.
-
-    Attributes:
-        type (:obj:`str`): Type of the entity.
-        offset (:obj:`int`): Offset in UTF-16 code units to the start of the entity.
-        length (:obj:`int`): Length of the entity in UTF-16 code units.
-        url (:obj:`str`): Optional. Url that will be opened after user taps on the text.
-        user (:class:`telegram.User`): Optional. The mentioned user.
-        language (:obj:`str`): Optional. Programming language of the entity text.
+    considered equal, if their :attr:`type`, :attr:`offset` and :attr:`length` are equal.
 
     Args:
-        type (:obj:`str`): Type of the entity. Can be mention (@username), hashtag, bot_command,
-            url, email, phone_number, bold (bold text), italic (italic text), strikethrough,
-            code (monowidth string), pre (monowidth block), text_link (for clickable text URLs),
-            text_mention (for users without usernames).
+        type (:obj:`str`): Type of the entity. Currently, can be mention (@username), hashtag,
+            bot_command, url, email, phone_number, bold (bold text), italic (italic text),
+            strikethrough, spoiler (spoiler message), code (monowidth string), pre
+            (monowidth block), text_link (for clickable text URLs), text_mention
+            (for users without usernames), custom_emoji (for inline custom emoji stickers).
+
+            .. versionadded:: 13.14
+                added inline custom emoji
         offset (:obj:`int`): Offset in UTF-16 code units to the start of the entity.
         length (:obj:`int`): Length of the entity in UTF-16 code units.
         url (:obj:`str`, optional): For :attr:`TEXT_LINK` only, url that will be opened after
@@ -56,8 +52,35 @@ class MessageEntity(TelegramObject):
              user.
         language (:obj:`str`, optional): For :attr:`PRE` only, the programming language of
             the entity text.
+         custom_emoji_id (:obj:`str`, optional): For :attr:`CUSTOM_EMOJI` only, unique identifier
+            of the custom emoji. Use :meth:`telegram.Bot.get_custom_emoji_stickers` to get full
+            information about the sticker.
+
+            .. versionadded:: 13.14
+
+    Attributes:
+        type (:obj:`str`): Type of the entity.
+        offset (:obj:`int`): Offset in UTF-16 code units to the start of the entity.
+        length (:obj:`int`): Length of the entity in UTF-16 code units.
+        url (:obj:`str`): Optional. Url that will be opened after user taps on the text.
+        user (:class:`telegram.User`): Optional. The mentioned user.
+        language (:obj:`str`): Optional. Programming language of the entity text.
+        custom_emoji_id (:obj:`str`): Optional. Unique identifier of the custom emoji.
+
+            .. versionadded:: 13.14
 
     """
+
+    __slots__ = (
+        'length',
+        'url',
+        'user',
+        'type',
+        'language',
+        'offset',
+        'custom_emoji_id',
+        '_id_attrs',
+    )
 
     def __init__(
         self,
@@ -67,6 +90,7 @@ class MessageEntity(TelegramObject):
         url: str = None,
         user: User = None,
         language: str = None,
+        custom_emoji_id: str = None,
         **_kwargs: Any,
     ):
         # Required
@@ -77,12 +101,14 @@ class MessageEntity(TelegramObject):
         self.url = url
         self.user = user
         self.language = language
+        self.custom_emoji_id = custom_emoji_id
 
         self._id_attrs = (self.type, self.offset, self.length)
 
     @classmethod
     def de_json(cls, data: Optional[JSONDict], bot: 'Bot') -> Optional['MessageEntity']:
-        data = cls.parse_data(data)
+        """See :meth:`telegram.TelegramObject.de_json`."""
+        data = cls._parse_data(data)
 
         if not data:
             return None
@@ -121,6 +147,16 @@ class MessageEntity(TelegramObject):
     """:const:`telegram.constants.MESSAGEENTITY_UNDERLINE`"""
     STRIKETHROUGH: ClassVar[str] = constants.MESSAGEENTITY_STRIKETHROUGH
     """:const:`telegram.constants.MESSAGEENTITY_STRIKETHROUGH`"""
+    SPOILER: ClassVar[str] = constants.MESSAGEENTITY_SPOILER
+    """:const:`telegram.constants.MESSAGEENTITY_SPOILER`
+
+    .. versionadded:: 13.10
+    """
+    CUSTOM_EMOJI: ClassVar[str] = constants.MESSAGEENTITY_CUSTOM_EMOJI
+    """:const:`telegram.constants.MESSAGEENTITY_CUSTOM_EMOJI`
+
+    .. versionadded:: 13.14
+    """
     ALL_TYPES: ClassVar[List[str]] = constants.MESSAGEENTITY_ALL_TYPES
     """:const:`telegram.constants.MESSAGEENTITY_ALL_TYPES`\n
     List of all the types"""

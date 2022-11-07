@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# pylint: disable=W0613, C0116, C0103
-# type: ignore[union-attr]
+# pylint: disable=C0116,W0613
 # This program is dedicated to the public domain under the CC0 license.
 
 """
@@ -17,8 +15,9 @@ bot.
 """
 
 import logging
+from typing import Dict
 
-from telegram import ReplyKeyboardMarkup, Update
+from telegram import ReplyKeyboardMarkup, Update, ReplyKeyboardRemove
 from telegram.ext import (
     Updater,
     CommandHandler,
@@ -28,7 +27,6 @@ from telegram.ext import (
     PicklePersistence,
     CallbackContext,
 )
-
 
 # Enable logging
 logging.basicConfig(
@@ -47,16 +45,14 @@ reply_keyboard = [
 markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 
 
-def facts_to_str(user_data):
-    facts = list()
-
-    for key, value in user_data.items():
-        facts.append(f'{key} - {value}')
-
+def facts_to_str(user_data: Dict[str, str]) -> str:
+    """Helper function for formatting the gathered user info."""
+    facts = [f'{key} - {value}' for key, value in user_data.items()]
     return "\n".join(facts).join(['\n', '\n'])
 
 
-def start(update: Update, context: CallbackContext) -> None:
+def start(update: Update, context: CallbackContext) -> int:
+    """Start the conversation, display any stored data and ask user for input."""
     reply_text = "Hi! My name is Doctor Botter."
     if context.user_data:
         reply_text += (
@@ -73,12 +69,13 @@ def start(update: Update, context: CallbackContext) -> None:
     return CHOOSING
 
 
-def regular_choice(update: Update, context: CallbackContext) -> None:
+def regular_choice(update: Update, context: CallbackContext) -> int:
+    """Ask the user for info about the selected predefined choice."""
     text = update.message.text.lower()
     context.user_data['choice'] = text
     if context.user_data.get(text):
         reply_text = (
-            f'Your {text}, I already know the following about that: {context.user_data[text]}'
+            f'Your {text}? I already know the following about that: {context.user_data[text]}'
         )
     else:
         reply_text = f'Your {text}? Yes, I would love to hear about that!'
@@ -87,15 +84,17 @@ def regular_choice(update: Update, context: CallbackContext) -> None:
     return TYPING_REPLY
 
 
-def custom_choice(update: Update, context: CallbackContext) -> None:
+def custom_choice(update: Update, context: CallbackContext) -> int:
+    """Ask the user for a description of a custom category."""
     update.message.reply_text(
-        'Alright, please send me the category first, ' 'for example "Most impressive skill"'
+        'Alright, please send me the category first, for example "Most impressive skill"'
     )
 
     return TYPING_CHOICE
 
 
-def received_information(update: Update, context: CallbackContext) -> None:
+def received_information(update: Update, context: CallbackContext) -> int:
+    """Store info provided by user and ask for the next category."""
     text = update.message.text
     category = context.user_data['choice']
     context.user_data[category] = text.lower()
@@ -104,8 +103,7 @@ def received_information(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(
         "Neat! Just so you know, this is what you already told me:"
         f"{facts_to_str(context.user_data)}"
-        "You can tell me more, or change your opinion on "
-        "something.",
+        "You can tell me more, or change your opinion on something.",
         reply_markup=markup,
     )
 
@@ -113,28 +111,32 @@ def received_information(update: Update, context: CallbackContext) -> None:
 
 
 def show_data(update: Update, context: CallbackContext) -> None:
+    """Display the gathered info."""
     update.message.reply_text(
         f"This is what you already told me: {facts_to_str(context.user_data)}"
     )
 
 
-def done(update: Update, context: CallbackContext) -> None:
+def done(update: Update, context: CallbackContext) -> int:
+    """Display the gathered info and end the conversation."""
     if 'choice' in context.user_data:
         del context.user_data['choice']
 
     update.message.reply_text(
-        "I learned these facts about you:" f"{facts_to_str(context.user_data)}" "Until next time!"
+        f"I learned these facts about you: {facts_to_str(context.user_data)}Until next time!",
+        reply_markup=ReplyKeyboardRemove(),
     )
     return ConversationHandler.END
 
 
-def main():
+def main() -> None:
+    """Run the bot."""
     # Create the Updater and pass it your bot's token.
-    pp = PicklePersistence(filename='conversationbot')
-    updater = Updater("TOKEN", persistence=pp, use_context=True)
+    persistence = PicklePersistence(filename='conversationbot')
+    updater = Updater("TOKEN", persistence=persistence)
 
     # Get the dispatcher to register handlers
-    dp = updater.dispatcher
+    dispatcher = updater.dispatcher
 
     # Add conversation handler with the states CHOOSING, TYPING_CHOICE and TYPING_REPLY
     conv_handler = ConversationHandler(
@@ -163,10 +165,10 @@ def main():
         persistent=True,
     )
 
-    dp.add_handler(conv_handler)
+    dispatcher.add_handler(conv_handler)
 
     show_data_handler = CommandHandler('show_data', show_data)
-    dp.add_handler(show_data_handler)
+    dispatcher.add_handler(show_data_handler)
 
     # Start the Bot
     updater.start_polling()

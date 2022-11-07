@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,16 +16,16 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
-
 import os
 from pathlib import Path
 
 import pytest
 from flaky import flaky
 
-from telegram import PhotoSize, Animation, Voice, TelegramError, MessageEntity
+from telegram import PhotoSize, Animation, Voice, TelegramError, MessageEntity, Bot
 from telegram.error import BadRequest
 from telegram.utils.helpers import escape_markdown
+from tests.conftest import check_shortcut_call, check_shortcut_signature, check_defaults_handling
 
 
 @pytest.fixture(scope='function')
@@ -57,6 +57,14 @@ class TestAnimation:
     file_size = 4127
     caption = "Test *animation*"
 
+    def test_slot_behaviour(self, animation, recwarn, mro_slots):
+        for attr in animation.__slots__:
+            assert getattr(animation, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not animation.__dict__, f"got missing slot(s): {animation.__dict__}"
+        assert len(mro_slots(animation)) == len(set(mro_slots(animation))), "duplicate slot"
+        animation.custom, animation.file_name = 'should give warning', self.file_name
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
+
     def test_creation(self, animation):
         assert isinstance(animation, Animation)
         assert isinstance(animation.file_id, str)
@@ -71,7 +79,6 @@ class TestAnimation:
         assert isinstance(animation.thumb, PhotoSize)
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_all_args(self, bot, chat_id, animation_file, animation, thumb_file):
         message = bot.send_animation(
             chat_id,
@@ -82,6 +89,7 @@ class TestAnimation:
             caption=self.caption,
             parse_mode='Markdown',
             disable_notification=False,
+            protect_content=True,
             thumb=thumb_file,
         )
 
@@ -95,9 +103,19 @@ class TestAnimation:
         assert message.animation.file_size == animation.file_size
         assert message.animation.thumb.width == self.width
         assert message.animation.thumb.height == self.height
+        assert message.has_protected_content
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
+    def test_send_animation_custom_filename(self, bot, chat_id, animation_file, monkeypatch):
+        def make_assertion(url, data, **kwargs):
+            return data['animation'].filename == 'custom_filename'
+
+        monkeypatch.setattr(bot.request, 'post', make_assertion)
+
+        assert bot.send_animation(chat_id, animation_file, filename='custom_filename')
+        monkeypatch.delattr(bot.request, 'post')
+
+    @flaky(3, 1)
     def test_get_and_download(self, bot, animation):
         new_file = bot.get_file(animation.file_id)
 
@@ -110,7 +128,6 @@ class TestAnimation:
         assert os.path.isfile('game.gif')
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_animation_url_file(self, bot, chat_id, animation):
         message = bot.send_animation(
             chat_id=chat_id, animation=self.animation_file_url, caption=self.caption
@@ -130,7 +147,6 @@ class TestAnimation:
         assert message.animation.file_size == animation.file_size
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_animation_caption_entities(self, bot, chat_id, animation):
         test_string = 'Italic Bold Code'
         entities = [
@@ -146,7 +162,6 @@ class TestAnimation:
         assert message.caption_entities == entities
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize('default_bot', [{'parse_mode': 'Markdown'}], indirect=True)
     def test_send_animation_default_parse_mode_1(self, default_bot, chat_id, animation_file):
         test_string = 'Italic Bold Code'
@@ -157,7 +172,6 @@ class TestAnimation:
         assert message.caption == test_string
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize('default_bot', [{'parse_mode': 'Markdown'}], indirect=True)
     def test_send_animation_default_parse_mode_2(self, default_bot, chat_id, animation_file):
         test_markdown_string = '_Italic_ *Bold* `Code`'
@@ -169,7 +183,6 @@ class TestAnimation:
         assert message.caption_markdown == escape_markdown(test_markdown_string)
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize('default_bot', [{'parse_mode': 'Markdown'}], indirect=True)
     def test_send_animation_default_parse_mode_3(self, default_bot, chat_id, animation_file):
         test_markdown_string = '_Italic_ *Bold* `Code`'
@@ -183,7 +196,7 @@ class TestAnimation:
     def test_send_animation_local_files(self, monkeypatch, bot, chat_id):
         # For just test that the correct paths are passed as we have no local bot API set up
         test_flag = False
-        expected = f"file://{Path.cwd() / 'tests/data/telegram.jpg'}"
+        expected = (Path.cwd() / 'tests/data/telegram.jpg/').as_uri()
         file = 'tests/data/telegram.jpg'
 
         def make_assertion(_, data, *args, **kwargs):
@@ -193,9 +206,9 @@ class TestAnimation:
         monkeypatch.setattr(bot, '_post', make_assertion)
         bot.send_animation(chat_id, file, thumb=file)
         assert test_flag
+        monkeypatch.delattr(bot, '_post')
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize(
         'default_bot,custom',
         [
@@ -230,7 +243,6 @@ class TestAnimation:
                 )
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_resend(self, bot, chat_id, animation):
         message = bot.send_animation(chat_id, animation.file_id)
 
@@ -259,7 +271,6 @@ class TestAnimation:
         animation = Animation.de_json(json_dict, bot)
         assert animation.file_id == self.animation_file_id
         assert animation.file_unique_id == self.animation_file_unique_id
-        assert animation.thumb == animation.thumb
         assert animation.file_name == self.file_name
         assert animation.mime_type == self.mime_type
         assert animation.file_size == self.file_size
@@ -279,7 +290,6 @@ class TestAnimation:
         assert animation_dict['file_size'] == animation.file_size
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_error_send_empty_file(self, bot, chat_id):
         animation_file = open(os.devnull, 'rb')
 
@@ -287,7 +297,6 @@ class TestAnimation:
             bot.send_animation(chat_id=chat_id, animation=animation_file)
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_error_send_empty_file_id(self, bot, chat_id):
         with pytest.raises(TelegramError):
             bot.send_animation(chat_id=chat_id, animation='')
@@ -297,10 +306,14 @@ class TestAnimation:
             bot.send_animation(chat_id=chat_id)
 
     def test_get_file_instance_method(self, monkeypatch, animation):
-        def test(*args, **kwargs):
-            return args[1] == animation.file_id
+        def make_assertion(*_, **kwargs):
+            return kwargs['file_id'] == animation.file_id
 
-        monkeypatch.setattr('telegram.Bot.get_file', test)
+        assert check_shortcut_signature(Animation.get_file, Bot.get_file, ['file_id'], [])
+        assert check_shortcut_call(animation.get_file, animation.bot, 'get_file')
+        assert check_defaults_handling(animation.get_file, animation.bot)
+
+        monkeypatch.setattr(animation.bot, 'get_file', make_assertion)
         assert animation.get_file()
 
     def test_equality(self):

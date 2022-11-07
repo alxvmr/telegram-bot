@@ -1,12 +1,10 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# pylint: disable=W0613, C0116
-# type: ignore[union-attr]
+# pylint: disable=C0116,W0613
 # This program is dedicated to the public domain under the CC0 license.
 
 """
 Basic example for a bot that works with polls. Only 3 people are allowed to interact with each
-poll/quiz the bot generates. The preview command generates a closed poll/quiz, excatly like the
+poll/quiz the bot generates. The preview command generates a closed poll/quiz, exactly like the
 one the user sends the bot
 """
 import logging
@@ -149,14 +147,13 @@ def receive_poll(update: Update, context: CallbackContext) -> None:
 
 def help_handler(update: Update, context: CallbackContext) -> None:
     """Display a help message"""
-    update.message.reply_text("Use /quiz, /poll or /preview to test this " "bot.")
+    update.message.reply_text("Use /quiz, /poll or /preview to test this bot.")
 
 
 def main() -> None:
+    """Run bot."""
     # Create the Updater and pass it your bot's token.
-    # Make sure to set use_context=True to use the new context based callbacks
-    # Post version 12 this will no longer be necessary
-    updater = Updater("TOKEN", use_context=True)
+    updater = Updater("TOKEN")
     dispatcher = updater.dispatcher
     dispatcher.add_handler(CommandHandler('start', start))
     dispatcher.add_handler(CommandHandler('poll', poll))

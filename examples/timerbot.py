@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# pylint: disable=W0613, C0116
-# type: ignore[union-attr]
+# pylint: disable=C0116,W0613
 # This program is dedicated to the public domain under the CC0 license.
 
 """
@@ -35,17 +33,22 @@ logger = logging.getLogger(__name__)
 
 # Define a few command handlers. These usually take the two arguments update and
 # context. Error handlers also receive the raised TelegramError object in error.
+# Best practice would be to replace context with an underscore,
+# since context is an unused local variable.
+# This being an example and not having context present confusing beginners,
+# we decided to have it present as context.
 def start(update: Update, context: CallbackContext) -> None:
+    """Sends explanation on how to use the bot."""
     update.message.reply_text('Hi! Use /set <seconds> to set a timer')
 
 
-def alarm(context):
+def alarm(context: CallbackContext) -> None:
     """Send the alarm message."""
     job = context.job
     context.bot.send_message(job.context, text='Beep!')
 
 
-def remove_job_if_exists(name, context):
+def remove_job_if_exists(name: str, context: CallbackContext) -> bool:
     """Remove job with given name. Returns whether job was removed."""
     current_jobs = context.job_queue.get_jobs_by_name(name)
     if not current_jobs:
@@ -85,12 +88,10 @@ def unset(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(text)
 
 
-def main():
+def main() -> None:
     """Run bot."""
     # Create the Updater and pass it your bot's token.
-    # Make sure to set use_context=True to use the new context based callbacks
-    # Post version 12 this will no longer be necessary
-    updater = Updater("TOKEN", use_context=True)
+    updater = Updater("TOKEN")
 
     # Get the dispatcher to register handlers
     dispatcher = updater.dispatcher

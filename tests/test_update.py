@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
+import time
 
 import pytest
 
@@ -31,10 +32,29 @@ from telegram import (
     PreCheckoutQuery,
     Poll,
     PollOption,
+    ChatMemberUpdated,
+    ChatMember,
+    ChatJoinRequest,
 )
 from telegram.poll import PollAnswer
+from telegram.utils.helpers import from_timestamp
 
 message = Message(1, None, Chat(1, ''), from_user=User(1, '', False), text='Text')
+chat_member_updated = ChatMemberUpdated(
+    Chat(1, 'chat'),
+    User(1, '', False),
+    from_timestamp(int(time.time())),
+    ChatMember(User(1, '', False), ChatMember.CREATOR),
+    ChatMember(User(1, '', False), ChatMember.CREATOR),
+)
+
+
+chat_join_request = ChatJoinRequest(
+    chat=Chat(1, Chat.SUPERGROUP),
+    from_user=User(1, 'first_name', False),
+    date=from_timestamp(int(time.time())),
+    bio='bio',
+)
 
 params = [
     {'message': message},
@@ -46,9 +66,13 @@ params = [
     {'chosen_inline_result': ChosenInlineResult('id', User(1, '', False), '')},
     {'shipping_query': ShippingQuery('id', User(1, '', False), '', None)},
     {'pre_checkout_query': PreCheckoutQuery('id', User(1, '', False), '', 0, '')},
-    {'callback_query': CallbackQuery(1, User(1, '', False), 'chat')},
     {'poll': Poll('id', '?', [PollOption('.', 1)], False, False, False, Poll.REGULAR, True)},
     {'poll_answer': PollAnswer("id", User(1, '', False), [1])},
+    {'my_chat_member': chat_member_updated},
+    {'chat_member': chat_member_updated},
+    {'chat_join_request': chat_join_request},
+    # Must be last to conform with `ids` below!
+    {'callback_query': CallbackQuery(1, User(1, '', False), 'chat')},
 ]
 
 all_types = (
@@ -63,6 +87,9 @@ all_types = (
     'pre_checkout_query',
     'poll',
     'poll_answer',
+    'my_chat_member',
+    'chat_member',
+    'chat_join_request',
 )
 
 ids = all_types + ('callback_query_without_message',)
@@ -76,6 +103,14 @@ def update(request):
 class TestUpdate:
     update_id = 868573637
 
+    def test_slot_behaviour(self, update, recwarn, mro_slots):
+        for attr in update.__slots__:
+            assert getattr(update, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not update.__dict__, f"got missing slot(s): {update.__dict__}"
+        assert len(mro_slots(update)) == len(set(mro_slots(update))), "duplicate slot"
+        update.custom, update.update_id = 'should give warning', self.update_id
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
+
     @pytest.mark.parametrize('paramdict', argvalues=params, ids=ids)
     def test_de_json(self, bot, paramdict):
         json_dict = {'update_id': TestUpdate.update_id}
@@ -87,10 +122,10 @@ class TestUpdate:
 
         # Make sure only one thing in the update (other than update_id) is not None
         i = 0
-        for type in all_types:
-            if getattr(update, type) is not None:
+        for _type in all_types:
+            if getattr(update, _type) is not None:
                 i += 1
-                assert getattr(update, type) == paramdict[type]
+                assert getattr(update, _type) == paramdict[_type]
         assert i == 1
 
     def test_update_de_json_empty(self, bot):
@@ -103,9 +138,9 @@ class TestUpdate:
 
         assert isinstance(update_dict, dict)
         assert update_dict['update_id'] == update.update_id
-        for type in all_types:
-            if getattr(update, type) is not None:
-                assert update_dict[type] == getattr(update, type).to_dict()
+        for _type in all_types:
+            if getattr(update, _type) is not None:
+                assert update_dict[_type] == getattr(update, _type).to_dict()
 
     def test_effective_chat(self, update):
         # Test that it's sometimes None per docstring
@@ -146,6 +181,9 @@ class TestUpdate:
             or update.pre_checkout_query is not None
             or update.poll is not None
             or update.poll_answer is not None
+            or update.my_chat_member is not None
+            or update.chat_member is not None
+            or update.chat_join_request is not None
         ):
             assert eff_message.message_id == message.message_id
         else:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,6 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
-
 import pytest
 
 from telegram import MessageEntity, User
@@ -32,9 +31,9 @@ def message_entity(request):
     if type_ == MessageEntity.TEXT_MENTION:
         user = User(1, 'test_user', False)
     language = None
-    if type == MessageEntity.PRE:
+    if type_ == MessageEntity.PRE:
         language = "python"
-    return MessageEntity(type, 1, 3, url=url, user=user, language=language)
+    return MessageEntity(type_, 1, 3, url=url, user=user, language=language)
 
 
 class TestMessageEntity:
@@ -42,6 +41,15 @@ class TestMessageEntity:
     offset = 1
     length = 2
     url = 'url'
+
+    def test_slot_behaviour(self, message_entity, recwarn, mro_slots):
+        inst = message_entity
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.type = 'should give warning', self.type_
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_de_json(self, bot):
         json_dict = {'type': self.type_, 'offset': self.offset, 'length': self.length}

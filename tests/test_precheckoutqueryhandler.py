@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -78,6 +78,15 @@ def pre_checkout_query():
 
 class TestPreCheckoutQueryHandler:
     test_flag = False
+
+    def test_slot_behaviour(self, recwarn, mro_slots):
+        inst = PreCheckoutQueryHandler(self.callback_basic)
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.callback = 'should give warning', self.callback_basic
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     @pytest.fixture(autouse=True)
     def reset(self):

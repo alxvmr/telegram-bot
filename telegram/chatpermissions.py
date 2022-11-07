@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -29,32 +29,12 @@ class ChatPermissions(TelegramObject):
     Objects of this class are comparable in terms of equality. Two objects of this class are
     considered equal, if their :attr:`can_send_messages`, :attr:`can_send_media_messages`,
     :attr:`can_send_polls`, :attr:`can_send_other_messages`, :attr:`can_add_web_page_previews`,
-    :attr:`can_change_info`, :attr:`can_invite_users` and :attr:`can_pin_message` are equal.
+    :attr:`can_change_info`, :attr:`can_invite_users` and :attr:`can_pin_messages` are equal.
 
     Note:
         Though not stated explicitly in the official docs, Telegram changes not only the
         permissions that are set, but also sets all the others to :obj:`False`. However, since not
         documented, this behaviour may change unbeknown to PTB.
-
-    Attributes:
-        can_send_messages (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to send text
-            messages, contacts, locations and venues.
-        can_send_media_messages (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to
-            send audios, documents, photos, videos, video notes and voice notes, implies
-            :attr:`can_send_messages`.
-        can_send_polls (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to send polls,
-            implies :attr:`can_send_messages`.
-        can_send_other_messages (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to
-            send animations, games, stickers and use inline bots, implies
-            :attr:`can_send_media_messages`.
-        can_add_web_page_previews (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to
-            add web page previews to their messages, implies :attr:`can_send_media_messages`.
-        can_change_info (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to change the
-            chat title, photo and other settings. Ignored in public supergroups.
-        can_invite_users (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to invite
-            new users to the chat.
-        can_pin_messages (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to pin
-            messages. Ignored in public supergroups.
 
     Args:
         can_send_messages (:obj:`bool`, optional): :obj:`True`, if the user is allowed to send text
@@ -76,7 +56,39 @@ class ChatPermissions(TelegramObject):
         can_pin_messages (:obj:`bool`, optional): :obj:`True`, if the user is allowed to pin
             messages. Ignored in public supergroups.
 
+    Attributes:
+        can_send_messages (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to send text
+            messages, contacts, locations and venues.
+        can_send_media_messages (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to
+            send audios, documents, photos, videos, video notes and voice notes, implies
+            :attr:`can_send_messages`.
+        can_send_polls (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to send polls,
+            implies :attr:`can_send_messages`.
+        can_send_other_messages (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to
+            send animations, games, stickers and use inline bots, implies
+            :attr:`can_send_media_messages`.
+        can_add_web_page_previews (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to
+            add web page previews to their messages, implies :attr:`can_send_media_messages`.
+        can_change_info (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to change the
+            chat title, photo and other settings. Ignored in public supergroups.
+        can_invite_users (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to invite
+            new users to the chat.
+        can_pin_messages (:obj:`bool`): Optional. :obj:`True`, if the user is allowed to pin
+            messages. Ignored in public supergroups.
+
     """
+
+    __slots__ = (
+        'can_send_other_messages',
+        'can_invite_users',
+        'can_send_polls',
+        '_id_attrs',
+        'can_send_messages',
+        'can_send_media_messages',
+        'can_change_info',
+        'can_pin_messages',
+        'can_add_web_page_previews',
+    )
 
     def __init__(
         self,

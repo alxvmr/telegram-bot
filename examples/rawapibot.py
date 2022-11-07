@@ -1,9 +1,8 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 # pylint: disable=W0603
 """Simple Bot to reply to Telegram messages.
 
-This is built on the API wrapper, see rawapibot.py to see the same example built
+This is built on the API wrapper, see echobot.py to see the same example built
 on the telegram.ext bot framework.
 This program is dedicated to the public domain under the CC0 license.
 """
@@ -40,7 +39,7 @@ def main() -> NoReturn:
             sleep(1)
         except Unauthorized:
             # The user has removed or blocked the bot.
-            UPDATE_ID += 1  # type: ignore[operator]
+            UPDATE_ID += 1
 
 
 def echo(bot: telegram.Bot) -> None:
@@ -50,7 +49,9 @@ def echo(bot: telegram.Bot) -> None:
     for update in bot.get_updates(offset=UPDATE_ID, timeout=10):
         UPDATE_ID = update.update_id + 1
 
-        if update.message:  # your bot can receive updates without messages
+        # your bot can receive updates without messages
+        # and not all messages contain text
+        if update.message and update.message.text:
             # Reply to the message
             update.message.reply_text(update.message.text)
 

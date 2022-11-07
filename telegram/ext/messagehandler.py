@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -19,44 +19,24 @@
 # TODO: Remove allow_edited
 """This module contains the MessageHandler class."""
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, TypeVar, Union
 
 from telegram import Update
 from telegram.ext import BaseFilter, Filters
 from telegram.utils.deprecate import TelegramDeprecationWarning
-from telegram.utils.types import HandlerArg
 from telegram.utils.helpers import DefaultValue, DEFAULT_FALSE
 
 from .handler import Handler
+from .utils.types import CCT
 
 if TYPE_CHECKING:
-    from telegram.ext import CallbackContext, Dispatcher
+    from telegram.ext import Dispatcher
 
 RT = TypeVar('RT')
 
 
-class MessageHandler(Handler):
+class MessageHandler(Handler[Update, CCT]):
     """Handler class to handle telegram messages. They might contain text, media or status updates.
-
-    Attributes:
-        filters (:obj:`Filter`): Only allow updates with these Filters. See
-            :mod:`telegram.ext.filters` for a full list of all available filters.
-        callback (:obj:`callable`): The callback function for this handler.
-        pass_update_queue (:obj:`bool`): Determines whether ``update_queue`` will be
-            passed to the callback function.
-        pass_job_queue (:obj:`bool`): Determines whether ``job_queue`` will be passed to
-            the callback function.
-        pass_user_data (:obj:`bool`): Determines whether ``user_data`` will be passed to
-            the callback function.
-        pass_chat_data (:obj:`bool`): Determines whether ``chat_data`` will be passed to
-            the callback function.
-        message_updates (:obj:`bool`): Should "normal" message updates be handled?
-            Default is :obj:`None`.
-        channel_post_updates (:obj:`bool`): Should channel posts updates be handled?
-            Default is :obj:`None`.
-        edited_updates (:obj:`bool`): Should "edited" message updates be handled?
-            Default is :obj:`None`.
-        run_async (:obj:`bool`): Determines whether the callback will run asynchronously.
 
     Note:
         :attr:`pass_user_data` and :attr:`pass_chat_data` determine whether a ``dict`` you
@@ -65,7 +45,8 @@ class MessageHandler(Handler):
         or in the same chat, it will be the same ``dict``.
 
         Note that this is DEPRECATED, and you should use context based callbacks. See
-        https://git.io/fxJuV for more info.
+        https://github.com/python-telegram-bot/python-telegram-bot/wiki\
+        /Transition-guide-to-Version-12.0 for more info.
 
     Warning:
         When setting ``run_async`` to :obj:`True`, you cannot rely on adding custom
@@ -119,12 +100,34 @@ class MessageHandler(Handler):
     Raises:
         ValueError
 
+    Attributes:
+        filters (:obj:`Filter`): Only allow updates with these Filters. See
+            :mod:`telegram.ext.filters` for a full list of all available filters.
+        callback (:obj:`callable`): The callback function for this handler.
+        pass_update_queue (:obj:`bool`): Determines whether ``update_queue`` will be
+            passed to the callback function.
+        pass_job_queue (:obj:`bool`): Determines whether ``job_queue`` will be passed to
+            the callback function.
+        pass_user_data (:obj:`bool`): Determines whether ``user_data`` will be passed to
+            the callback function.
+        pass_chat_data (:obj:`bool`): Determines whether ``chat_data`` will be passed to
+            the callback function.
+        message_updates (:obj:`bool`): Should "normal" message updates be handled?
+            Default is :obj:`None`.
+        channel_post_updates (:obj:`bool`): Should channel posts updates be handled?
+            Default is :obj:`None`.
+        edited_updates (:obj:`bool`): Should "edited" message updates be handled?
+            Default is :obj:`None`.
+        run_async (:obj:`bool`): Determines whether the callback will run asynchronously.
+
     """
+
+    __slots__ = ('filters',)
 
     def __init__(
         self,
         filters: BaseFilter,
-        callback: Callable[[HandlerArg, 'CallbackContext'], RT],
+        callback: Callable[[Update, CCT], RT],
         pass_update_queue: bool = False,
         pass_job_queue: bool = False,
         pass_user_data: bool = False,
@@ -153,7 +156,9 @@ class MessageHandler(Handler):
             self.filters = Filters.update
         if message_updates is not None:
             warnings.warn(
-                'message_updates is deprecated. See https://git.io/fxJuV for more info',
+                'message_updates is deprecated. See '
+                'https://github.com/python-telegram-bot/python-telegram-bot/wiki/Transition'
+                '-guide-to-Version-12.0 for more info',
                 TelegramDeprecationWarning,
                 stacklevel=2,
             )
@@ -162,7 +167,10 @@ class MessageHandler(Handler):
 
         if channel_post_updates is not None:
             warnings.warn(
-                'channel_post_updates is deprecated. See https://git.io/fxJuV ' 'for more info',
+                'channel_post_updates is deprecated. See '
+                'https://github.com/python-telegram-bot/python-telegram-bot/wiki/Transition'
+                '-guide-to-Version-12.0 '
+                'for more info',
                 TelegramDeprecationWarning,
                 stacklevel=2,
             )
@@ -171,7 +179,9 @@ class MessageHandler(Handler):
 
         if edited_updates is not None:
             warnings.warn(
-                'edited_updates is deprecated. See https://git.io/fxJuV for more info',
+                'edited_updates is deprecated. See '
+                'https://github.com/python-telegram-bot/python-telegram-bot/wiki/Transition'
+                '-guide-to-Version-12.0 for more info',
                 TelegramDeprecationWarning,
                 stacklevel=2,
             )
@@ -180,11 +190,11 @@ class MessageHandler(Handler):
                     Filters.update.edited_message | Filters.update.edited_channel_post
                 )
 
-    def check_update(self, update: HandlerArg) -> Optional[Union[bool, Dict[str, Any]]]:
+    def check_update(self, update: object) -> Optional[Union[bool, Dict[str, list]]]:
         """Determines whether an update should be passed to this handlers :attr:`callback`.
 
         Args:
-            update (:class:`telegram.Update`): Incoming telegram update.
+            update (:class:`telegram.Update` | :obj:`object`): Incoming update.
 
         Returns:
             :obj:`bool`
@@ -196,10 +206,11 @@ class MessageHandler(Handler):
 
     def collect_additional_context(
         self,
-        context: 'CallbackContext',
-        update: HandlerArg,
+        context: CCT,
+        update: Update,
         dispatcher: 'Dispatcher',
-        check_result: Optional[Union[bool, Dict[str, Any]]],
+        check_result: Optional[Union[bool, Dict[str, object]]],
     ) -> None:
+        """Adds possible output of data filters to the :class:`CallbackContext`."""
         if isinstance(check_result, dict):
             context.update(check_result)

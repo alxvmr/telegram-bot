@@ -4,7 +4,7 @@
 # Tymofii A. Khodniev (thodnev) <thodnev@mail.ru>
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,9 +24,11 @@ import functools
 import queue as q
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Callable, List, NoReturn
+import warnings
+from typing import TYPE_CHECKING, Callable, List, NoReturn
 
-from telegram.utils.promise import Promise
+from telegram.ext.utils.promise import Promise
+from telegram.utils.deprecate import TelegramDeprecationWarning
 
 if TYPE_CHECKING:
     from telegram import Bot
@@ -38,19 +40,18 @@ curtime = time.perf_counter
 class DelayQueueError(RuntimeError):
     """Indicates processing errors."""
 
+    __slots__ = ()
+
 
 class DelayQueue(threading.Thread):
     """
     Processes callbacks from queue with specified throughput limits. Creates a separate thread to
     process callbacks with delays.
 
-    Attributes:
-        burst_limit (:obj:`int`): Number of maximum callbacks to process per time-window.
-        time_limit (:obj:`int`): Defines width of time-window used when each processing limit is
-            calculated.
-        exc_route (:obj:`callable`): A callable, accepting 1 positional argument; used to route
-            exceptions from processor thread to main thread;
-        name (:obj:`str`): Thread's name.
+    .. deprecated:: 13.3
+       :class:`telegram.ext.DelayQueue` in its current form is deprecated and will be reinvented
+       in a future release. See `this thread <https://github.com/python-telegram-bot/\
+       python-telegram-bot/issues/2139>`_ for a list of known bugs.
 
     Args:
         queue (:obj:`Queue`, optional): Used to pass callbacks to thread. Creates ``Queue``
@@ -69,6 +70,14 @@ class DelayQueue(threading.Thread):
         name (:obj:`str`, optional): Thread's name. Defaults to ``'DelayQueue-N'``, where N is
             sequential number of object created.
 
+    Attributes:
+        burst_limit (:obj:`int`): Number of maximum callbacks to process per time-window.
+        time_limit (:obj:`int`): Defines width of time-window used when each processing limit is
+            calculated.
+        exc_route (:obj:`callable`): A callable, accepting 1 positional argument; used to route
+            exceptions from processor thread to main thread;
+        name (:obj:`str`): Thread's name.
+
     """
 
     _instcnt = 0  # instance counter
@@ -82,6 +91,13 @@ class DelayQueue(threading.Thread):
         autostart: bool = True,
         name: str = None,
     ):
+        warnings.warn(
+            'DelayQueue in its current form is deprecated and will be reinvented in a future '
+            'release. See https://github.com/python-telegram-bot/python-telegram-bot/issues/2139 '
+            'for a list of known bugs.',
+            category=TelegramDeprecationWarning,
+        )
+
         self._queue = queue if queue is not None else q.Queue()
         self.burst_limit = burst_limit
         self.time_limit = time_limit_ms / 1000
@@ -101,7 +117,6 @@ class DelayQueue(threading.Thread):
         automatically called by autostart argument.
 
         """
-
         times: List[float] = []  # used to store each callable processing time
         while True:
             item = self._queue.get()
@@ -138,7 +153,6 @@ class DelayQueue(threading.Thread):
                 Defaults to :obj:`None`.
 
         """
-
         self.__exit_req = True  # gently request
         self._queue.put(None)  # put something to unfreeze if frozen
         super().join(timeout=timeout)
@@ -150,10 +164,9 @@ class DelayQueue(threading.Thread):
         by subclasses.
 
         """
-
         raise exc
 
-    def __call__(self, func: Callable, *args: Any, **kwargs: Any) -> None:
+    def __call__(self, func: Callable, *args: object, **kwargs: object) -> None:
         """Used to process callbacks in throughput-limiting thread through queue.
 
         Args:
@@ -163,7 +176,6 @@ class DelayQueue(threading.Thread):
             **kwargs (:obj:`dict`): Arbitrary keyword-arguments to `func`.
 
         """
-
         if not self.is_alive() or self.__exit_req:
             raise DelayQueueError('Could not process callback in stopped thread')
         self._queue.put((func, args, kwargs))
@@ -181,6 +193,11 @@ class MessageQueue:
     Contains two ``DelayQueue``, for group and for all messages, interconnected in delay chain.
     Callables are processed through *group* ``DelayQueue``, then through *all* ``DelayQueue`` for
     group-type messages. For non-group messages, only the *all* ``DelayQueue`` is used.
+
+    .. deprecated:: 13.3
+       :class:`telegram.ext.MessageQueue` in its current form is deprecated and will be reinvented
+       in a future release. See `this thread <https://github.com/python-telegram-bot/\
+       python-telegram-bot/issues/2139>`_ for a list of known bugs.
 
     Args:
         all_burst_limit (:obj:`int`, optional): Number of maximum *all-type* callbacks to process
@@ -210,6 +227,13 @@ class MessageQueue:
         exc_route: Callable[[Exception], None] = None,
         autostart: bool = True,
     ):
+        warnings.warn(
+            'MessageQueue in its current form is deprecated and will be reinvented in a future '
+            'release. See https://github.com/python-telegram-bot/python-telegram-bot/issues/2139 '
+            'for a list of known bugs.',
+            category=TelegramDeprecationWarning,
+        )
+
         # create according delay queues, use composition
         self._all_delayq = DelayQueue(
             burst_limit=all_burst_limit,
@@ -230,6 +254,7 @@ class MessageQueue:
         self._group_delayq.start()
 
     def stop(self, timeout: float = None) -> None:
+        """Stops the ``MessageQueue``."""
         self._group_delayq.stop(timeout=timeout)
         self._all_delayq.stop(timeout=timeout)
 
@@ -259,7 +284,6 @@ class MessageQueue:
             :obj:`callable`: Used as ``promise`` argument.
 
         """
-
         if not is_group_msg:  # ignore middle group delay
             self._all_delayq(promise)
         else:  # use middle group delay
@@ -300,7 +324,7 @@ def queuedmessage(method: Callable) -> Callable:
     """
 
     @functools.wraps(method)
-    def wrapped(self: 'Bot', *args: Any, **kwargs: Any) -> Any:
+    def wrapped(self: 'Bot', *args: object, **kwargs: object) -> object:
         # pylint: disable=W0212
         queued = kwargs.pop(
             'queued', self._is_messages_queued_default  # type: ignore[attr-defined]

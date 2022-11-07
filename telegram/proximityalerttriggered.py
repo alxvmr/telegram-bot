@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -34,16 +34,19 @@ class ProximityAlertTriggered(TelegramObject):
     Objects of this class are comparable in terms of equality. Two objects of this class are
     considered equal, if their :attr:`traveler`, :attr:`watcher` and :attr:`distance` are equal.
 
+    Args:
+        traveler (:class:`telegram.User`): User that triggered the alert
+        watcher (:class:`telegram.User`): User that set the alert
+        distance (:obj:`int`): The distance between the users
+
     Attributes:
         traveler (:class:`telegram.User`): User that triggered the alert
         watcher (:class:`telegram.User`): User that set the alert
         distance (:obj:`int`): The distance between the users
 
-    Args:
-        traveler (:class:`telegram.User`): User that triggered the alert
-        watcher (:class:`telegram.User`): User that set the alert
-        distance (:obj:`int`): The distance between the users
     """
+
+    __slots__ = ('traveler', 'distance', 'watcher', '_id_attrs')
 
     def __init__(self, traveler: User, watcher: User, distance: int, **_kwargs: Any):
         self.traveler = traveler
@@ -54,7 +57,8 @@ class ProximityAlertTriggered(TelegramObject):
 
     @classmethod
     def de_json(cls, data: Optional[JSONDict], bot: 'Bot') -> Optional['ProximityAlertTriggered']:
-        data = cls.parse_data(data)
+        """See :meth:`telegram.TelegramObject.de_json`."""
+        data = cls._parse_data(data)
 
         if not data:
             return None

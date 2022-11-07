@@ -1,8 +1,7 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -28,6 +27,15 @@ from telegram import InputFile
 
 class TestInputFile:
     png = os.path.join('tests', 'data', 'game.png')
+
+    def test_slot_behaviour(self, recwarn, mro_slots):
+        inst = InputFile(BytesIO(b'blah'), filename='tg.jpg')
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.filename = 'should give warning', inst.filename
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_subprocess_pipe(self):
         if sys.platform == 'win32':
@@ -68,7 +76,7 @@ class TestInputFile:
 
         # Test string file
         with caplog.at_level(logging.DEBUG):
-            assert InputFile(open('tests/data/text_file.txt', 'r')).mimetype == 'text/plain'
+            assert InputFile(open('tests/data/text_file.txt')).mimetype == 'text/plain'
 
             assert len(caplog.records) == 1
             assert caplog.records[0].getMessage().startswith('Could not parse file content')
@@ -115,3 +123,14 @@ class TestInputFile:
             InputFile(MockedFileobject('tests/data/telegram'), filename='blah.jpg').filename
             == 'blah.jpg'
         )
+
+    def test_send_bytes(self, bot, chat_id):
+        # We test this here and not at the respective test modules because it's not worth
+        # duplicating the test for the different methods
+        with open('tests/data/text_file.txt', 'rb') as file:
+            message = bot.send_document(chat_id, file.read())
+
+        out = BytesIO()
+        assert message.document.get_file().download(out=out)
+        out.seek(0)
+        assert out.read().decode('utf-8') == 'PTB Rocks!'

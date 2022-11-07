@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -37,15 +37,6 @@ class Venue(TelegramObject):
       Foursquare details and Google Pace details are mutually exclusive. However, this
       behaviour is undocumented and might be changed by Telegram.
 
-    Attributes:
-        location (:class:`telegram.Location`): Venue location.
-        title (:obj:`str`): Name of the venue.
-        address (:obj:`str`): Address of the venue.
-        foursquare_id (:obj:`str`): Optional. Foursquare identifier of the venue.
-        foursquare_type (:obj:`str`): Optional. Foursquare type of the venue.
-        google_place_id (:obj:`str`): Optional. Google Places identifier of the venue.
-        google_place_type (:obj:`str`): Optional. Google Places type of the venue.
-
     Args:
         location (:class:`telegram.Location`): Venue location.
         title (:obj:`str`): Name of the venue.
@@ -58,7 +49,27 @@ class Venue(TelegramObject):
             `supported types <https://developers.google.com/places/web-service/supported_types>`_.)
         **kwargs (:obj:`dict`): Arbitrary keyword arguments.
 
+    Attributes:
+        location (:class:`telegram.Location`): Venue location.
+        title (:obj:`str`): Name of the venue.
+        address (:obj:`str`): Address of the venue.
+        foursquare_id (:obj:`str`): Optional. Foursquare identifier of the venue.
+        foursquare_type (:obj:`str`): Optional. Foursquare type of the venue.
+        google_place_id (:obj:`str`): Optional. Google Places identifier of the venue.
+        google_place_type (:obj:`str`): Optional. Google Places type of the venue.
+
     """
+
+    __slots__ = (
+        'google_place_type',
+        'location',
+        'title',
+        'address',
+        'foursquare_type',
+        'foursquare_id',
+        'google_place_id',
+        '_id_attrs',
+    )
 
     def __init__(
         self,
@@ -85,7 +96,8 @@ class Venue(TelegramObject):
 
     @classmethod
     def de_json(cls, data: Optional[JSONDict], bot: 'Bot') -> Optional['Venue']:
-        data = cls.parse_data(data)
+        """See :meth:`telegram.TelegramObject.de_json`."""
+        data = cls._parse_data(data)
 
         if not data:
             return None

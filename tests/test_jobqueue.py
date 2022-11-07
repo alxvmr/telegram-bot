@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@ import calendar
 import datetime as dtm
 import logging
 import os
+import platform
 import time
 from queue import Queue
 from time import sleep
@@ -28,7 +29,11 @@ import pytest
 import pytz
 from apscheduler.schedulers import SchedulerNotRunningError
 from flaky import flaky
-from telegram.ext import JobQueue, Updater, Job, CallbackContext
+from telegram.ext import JobQueue, Updater, Job, CallbackContext, Dispatcher, ContextTypes
+
+
+class CustomContext(CallbackContext):
+    pass
 
 
 @pytest.fixture(scope='function')
@@ -41,14 +46,22 @@ def job_queue(bot, _dp):
 
 
 @pytest.mark.skipif(
-    os.getenv('GITHUB_ACTIONS', False) and os.name == 'nt',
-    reason="On windows precise timings are not accurate.",
+    os.getenv('GITHUB_ACTIONS', False) and platform.system() in ['Windows', 'Darwin'],
+    reason="On Windows & MacOS precise timings are not accurate.",
 )
 @flaky(10, 1)  # Timings aren't quite perfect
 class TestJobQueue:
     result = 0
     job_time = 0
     received_error = None
+
+    def test_slot_behaviour(self, job_queue, recwarn, mro_slots, _dp):
+        for attr in job_queue.__slots__:
+            assert getattr(job_queue, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not job_queue.__dict__, f"got missing slot(s): {job_queue.__dict__}"
+        assert len(mro_slots(job_queue)) == len(set(mro_slots(job_queue))), "duplicate slot"
+        job_queue.custom, job_queue._dispatcher = 'should give warning', _dp
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     @pytest.fixture(autouse=True)
     def reset(self):
@@ -313,7 +326,7 @@ class TestJobQueue:
             next_months_days = calendar.monthrange(now.year, now.month + 1)[1]
 
         expected_reschedule_time += dtm.timedelta(this_months_days)
-        if next_months_days < this_months_days:
+        if day > next_months_days:
             expected_reschedule_time += dtm.timedelta(next_months_days)
 
         expected_reschedule_time = timezone.normalize(expected_reschedule_time)
@@ -510,3 +523,25 @@ class TestJobQueue:
         assert len(caplog.records) == 1
         rec = caplog.records[-1]
         assert 'No error handlers are registered' in rec.getMessage()
+
+    def test_custom_context(self, bot, job_queue):
+        dispatcher = Dispatcher(
+            bot,
+            Queue(),
+            context_types=ContextTypes(
+                context=CustomContext, bot_data=int, user_data=float, chat_data=complex
+            ),
+        )
+        job_queue.set_dispatcher(dispatcher)
+
+        def callback(context):
+            self.result = (
+                type(context),
+                context.user_data,
+                context.chat_data,
+                type(context.bot_data),
+            )
+
+        job_queue.run_once(callback, 0.1)
+        sleep(0.15)
+        assert self.result == (CustomContext, None, None, int)

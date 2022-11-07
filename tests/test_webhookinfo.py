@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,11 +16,12 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
-
+from datetime import datetime
 import pytest
 import time
 
 from telegram import WebhookInfo, LoginUrl
+from telegram.utils.helpers import from_timestamp
 
 
 @pytest.fixture(scope='class')
@@ -33,10 +34,11 @@ def webhook_info():
         last_error_date=TestWebhookInfo.last_error_date,
         max_connections=TestWebhookInfo.max_connections,
         allowed_updates=TestWebhookInfo.allowed_updates,
+        last_synchronization_error_date=TestWebhookInfo.last_synchronization_error_date,
     )
 
 
-class TestWebhookInfo(object):
+class TestWebhookInfo:
     url = "http://www.google.com"
     has_custom_certificate = False
     pending_update_count = 5
@@ -44,6 +46,15 @@ class TestWebhookInfo(object):
     last_error_date = time.time()
     max_connections = 42
     allowed_updates = ['type1', 'type2']
+    last_synchronization_error_date = time.time()
+
+    def test_slot_behaviour(self, webhook_info, mro_slots, recwarn):
+        for attr in webhook_info.__slots__:
+            assert getattr(webhook_info, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not webhook_info.__dict__, f"got missing slot(s): {webhook_info.__dict__}"
+        assert len(mro_slots(webhook_info)) == len(set(mro_slots(webhook_info))), "duplicate slot"
+        webhook_info.custom, webhook_info.url = 'should give warning', self.url
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_to_dict(self, webhook_info):
         webhook_info_dict = webhook_info.to_dict()
@@ -55,6 +66,39 @@ class TestWebhookInfo(object):
         assert webhook_info_dict['max_connections'] == self.max_connections
         assert webhook_info_dict['allowed_updates'] == self.allowed_updates
         assert webhook_info_dict['ip_address'] == self.ip_address
+        assert (
+            webhook_info_dict['last_synchronization_error_date']
+            == self.last_synchronization_error_date
+        )
+
+    def test_de_json(self, bot):
+        json_dict = {
+            'url': self.url,
+            'has_custom_certificate': self.has_custom_certificate,
+            'pending_update_count': self.pending_update_count,
+            'last_error_date': self.last_error_date,
+            'max_connections': self.max_connections,
+            'allowed_updates': self.allowed_updates,
+            'ip_address': self.ip_address,
+            'last_synchronization_error_date': self.last_synchronization_error_date,
+        }
+        webhook_info = WebhookInfo.de_json(json_dict, bot)
+
+        assert webhook_info.url == self.url
+        assert webhook_info.has_custom_certificate == self.has_custom_certificate
+        assert webhook_info.pending_update_count == self.pending_update_count
+        assert isinstance(webhook_info.last_error_date, datetime)
+        assert webhook_info.last_error_date == from_timestamp(self.last_error_date)
+        assert webhook_info.max_connections == self.max_connections
+        assert webhook_info.allowed_updates == self.allowed_updates
+        assert webhook_info.ip_address == self.ip_address
+        assert isinstance(webhook_info.last_synchronization_error_date, datetime)
+        assert webhook_info.last_synchronization_error_date == from_timestamp(
+            self.last_synchronization_error_date
+        )
+
+        none = WebhookInfo.de_json(None, bot)
+        assert none is None
 
     def test_equality(self):
         a = WebhookInfo(
@@ -63,6 +107,7 @@ class TestWebhookInfo(object):
             pending_update_count=self.pending_update_count,
             last_error_date=self.last_error_date,
             max_connections=self.max_connections,
+            last_synchronization_error_date=self.last_synchronization_error_date,
         )
         b = WebhookInfo(
             url=self.url,

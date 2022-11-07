@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -73,6 +73,15 @@ def poll_answer(bot):
 
 class TestPollAnswerHandler:
     test_flag = False
+
+    def test_slot_behaviour(self, recwarn, mro_slots):
+        handler = PollAnswerHandler(self.callback_basic)
+        for attr in handler.__slots__:
+            assert getattr(handler, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not handler.__dict__, f"got missing slot(s): {handler.__dict__}"
+        assert len(mro_slots(handler)) == len(set(mro_slots(handler))), "duplicate slot"
+        handler.custom, handler.callback = 'should give warning', self.callback_basic
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     @pytest.fixture(autouse=True)
     def reset(self):

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -34,22 +34,27 @@ class InlineKeyboardMarkup(ReplyMarkup):
     Objects of this class are comparable in terms of equality. Two objects of this class are
     considered equal, if their the size of :attr:`inline_keyboard` and all the buttons are equal.
 
-    Attributes:
-        inline_keyboard (List[List[:class:`telegram.InlineKeyboardButton`]]): List of button rows,
-            each represented by a list of InlineKeyboardButton objects.
-
     Args:
         inline_keyboard (List[List[:class:`telegram.InlineKeyboardButton`]]): List of button rows,
             each represented by a list of InlineKeyboardButton objects.
         **kwargs (:obj:`dict`): Arbitrary keyword arguments.
 
+    Attributes:
+        inline_keyboard (List[List[:class:`telegram.InlineKeyboardButton`]]): List of button rows,
+            each represented by a list of InlineKeyboardButton objects.
+
     """
+
+    __slots__ = ('inline_keyboard', '_id_attrs')
 
     def __init__(self, inline_keyboard: List[List[InlineKeyboardButton]], **_kwargs: Any):
         # Required
         self.inline_keyboard = inline_keyboard
 
+        self._id_attrs = (self.inline_keyboard,)
+
     def to_dict(self) -> JSONDict:
+        """See :meth:`telegram.TelegramObject.to_dict`."""
         data = super().to_dict()
 
         data['inline_keyboard'] = []
@@ -60,7 +65,8 @@ class InlineKeyboardMarkup(ReplyMarkup):
 
     @classmethod
     def de_json(cls, data: Optional[JSONDict], bot: 'Bot') -> Optional['InlineKeyboardMarkup']:
-        data = cls.parse_data(data)
+        """See :meth:`telegram.TelegramObject.de_json`."""
+        data = cls._parse_data(data)
 
         if not data:
             return None
@@ -77,7 +83,7 @@ class InlineKeyboardMarkup(ReplyMarkup):
         return cls(keyboard)
 
     @classmethod
-    def from_button(cls, button: InlineKeyboardButton, **kwargs: Any) -> 'InlineKeyboardMarkup':
+    def from_button(cls, button: InlineKeyboardButton, **kwargs: object) -> 'InlineKeyboardMarkup':
         """Shortcut for::
 
             InlineKeyboardMarkup([[button]], **kwargs)
@@ -93,7 +99,7 @@ class InlineKeyboardMarkup(ReplyMarkup):
 
     @classmethod
     def from_row(
-        cls, button_row: List[InlineKeyboardButton], **kwargs: Any
+        cls, button_row: List[InlineKeyboardButton], **kwargs: object
     ) -> 'InlineKeyboardMarkup':
         """Shortcut for::
 
@@ -111,7 +117,7 @@ class InlineKeyboardMarkup(ReplyMarkup):
 
     @classmethod
     def from_column(
-        cls, button_column: List[InlineKeyboardButton], **kwargs: Any
+        cls, button_column: List[InlineKeyboardButton], **kwargs: object
     ) -> 'InlineKeyboardMarkup':
         """Shortcut for::
 
@@ -127,19 +133,6 @@ class InlineKeyboardMarkup(ReplyMarkup):
         """
         button_grid = [[button] for button in button_column]
         return cls(button_grid, **kwargs)
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, self.__class__):
-            if len(self.inline_keyboard) != len(other.inline_keyboard):
-                return False
-            for idx, row in enumerate(self.inline_keyboard):
-                if len(row) != len(other.inline_keyboard[idx]):
-                    return False
-                for jdx, button in enumerate(row):
-                    if button != other.inline_keyboard[idx][jdx]:
-                        return False
-            return True
-        return super().__eq__(other)
 
     def __hash__(self) -> int:
         return hash(tuple(tuple(button for button in row) for row in self.inline_keyboard))

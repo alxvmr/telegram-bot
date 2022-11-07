@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -35,17 +35,19 @@ class ChatLocation(TelegramObject):
     Objects of this class are comparable in terms of equality. Two objects of this class are
     considered equal, if their :attr:`location` is equal.
 
-    Attributes:
-        location (:class:`telegram.Location`): The location to which the supergroup is connected.
-        address (:obj:`str`): Location address, as defined by the chat owner
-
     Args:
         location (:class:`telegram.Location`): The location to which the supergroup is connected.
             Can't be a live location.
         address (:obj:`str`): Location address; 1-64 characters, as defined by the chat owner
         **kwargs (:obj:`dict`): Arbitrary keyword arguments.
 
+    Attributes:
+        location (:class:`telegram.Location`): The location to which the supergroup is connected.
+        address (:obj:`str`): Location address, as defined by the chat owner
+
     """
+
+    __slots__ = ('location', '_id_attrs', 'address')
 
     def __init__(
         self,
@@ -60,7 +62,8 @@ class ChatLocation(TelegramObject):
 
     @classmethod
     def de_json(cls, data: Optional[JSONDict], bot: 'Bot') -> Optional['ChatLocation']:
-        data = cls.parse_data(data)
+        """See :meth:`telegram.TelegramObject.de_json`."""
+        data = cls._parse_data(data)
 
         if not data:
             return None

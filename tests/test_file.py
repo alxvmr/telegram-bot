@@ -1,8 +1,7 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -53,10 +52,18 @@ class TestFile:
     file_id = 'NOTVALIDDOESNOTMATTER'
     file_unique_id = 'adc3145fd2e84d95b64d68eaa22aa33e'
     file_path = (
-        u'https://api.org/file/bot133505823:AAHZFMHno3mzVLErU5b5jJvaeG--qUyLyG0/document/file_3'
+        'https://api.org/file/bot133505823:AAHZFMHno3mzVLErU5b5jJvaeG--qUyLyG0/document/file_3'
     )
     file_size = 28232
-    file_content = u'Saint-Saëns'.encode('utf-8')  # Intentionally contains unicode chars.
+    file_content = 'Saint-Saëns'.encode()  # Intentionally contains unicode chars.
+
+    def test_slot_behaviour(self, file, recwarn, mro_slots):
+        for attr in file.__slots__:
+            assert getattr(file, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not file.__dict__, f"got missing slot(s): {file.__dict__}"
+        assert len(mro_slots(file)) == len(set(mro_slots(file))), "duplicate slot"
+        file.custom, file.file_id = 'should give warning', self.file_id
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_de_json(self, bot):
         json_dict = {
@@ -82,7 +89,6 @@ class TestFile:
         assert file_dict['file_size'] == file.file_size
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_error_get_empty_file_id(self, bot):
         with pytest.raises(TelegramError):
             bot.get_file(file_id='')

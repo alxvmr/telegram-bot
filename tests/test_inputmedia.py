@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -30,6 +30,7 @@ from telegram import (
     InputMediaAudio,
     InputMediaDocument,
     MessageEntity,
+    ParseMode,
 )
 
 # noinspection PyUnresolvedReferences
@@ -126,6 +127,15 @@ class TestInputMediaVideo:
     supports_streaming = True
     caption_entities = [MessageEntity(MessageEntity.BOLD, 0, 2)]
 
+    def test_slot_behaviour(self, input_media_video, recwarn, mro_slots):
+        inst = input_media_video
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.type = 'should give warning', self.type_
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
+
     def test_expected_values(self, input_media_video):
         assert input_media_video.type == self.type_
         assert input_media_video.media == self.media
@@ -173,8 +183,8 @@ class TestInputMediaVideo:
         input_media_video = InputMediaVideo(
             'tests/data/telegram.mp4', thumb='tests/data/telegram.jpg'
         )
-        assert input_media_video.media == f"file://{Path.cwd() / 'tests/data/telegram.mp4'}"
-        assert input_media_video.thumb == f"file://{Path.cwd() / 'tests/data/telegram.jpg'}"
+        assert input_media_video.media == (Path.cwd() / 'tests/data/telegram.mp4/').as_uri()
+        assert input_media_video.thumb == (Path.cwd() / 'tests/data/telegram.jpg/').as_uri()
 
 
 class TestInputMediaPhoto:
@@ -183,6 +193,15 @@ class TestInputMediaPhoto:
     caption = "My Caption"
     parse_mode = 'Markdown'
     caption_entities = [MessageEntity(MessageEntity.BOLD, 0, 2)]
+
+    def test_slot_behaviour(self, input_media_photo, recwarn, mro_slots):
+        inst = input_media_photo
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.type = 'should give warning', self.type_
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_expected_values(self, input_media_photo):
         assert input_media_photo.type == self.type_
@@ -217,7 +236,7 @@ class TestInputMediaPhoto:
 
     def test_with_local_files(self):
         input_media_photo = InputMediaPhoto('tests/data/telegram.mp4')
-        assert input_media_photo.media == f"file://{Path.cwd() / 'tests/data/telegram.mp4'}"
+        assert input_media_photo.media == (Path.cwd() / 'tests/data/telegram.mp4/').as_uri()
 
 
 class TestInputMediaAnimation:
@@ -229,6 +248,15 @@ class TestInputMediaAnimation:
     width = 30
     height = 30
     duration = 1
+
+    def test_slot_behaviour(self, input_media_animation, recwarn, mro_slots):
+        inst = input_media_animation
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.type = 'should give warning', self.type_
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_expected_values(self, input_media_animation):
         assert input_media_animation.type == self.type_
@@ -269,12 +297,8 @@ class TestInputMediaAnimation:
         input_media_animation = InputMediaAnimation(
             'tests/data/telegram.mp4', thumb='tests/data/telegram.jpg'
         )
-        assert input_media_animation.media == 'file://' + str(
-            Path.cwd() / 'tests/data/telegram.mp4'
-        )
-        assert input_media_animation.thumb == 'file://' + str(
-            Path.cwd() / 'tests/data/telegram.jpg'
-        )
+        assert input_media_animation.media == (Path.cwd() / 'tests/data/telegram.mp4').as_uri()
+        assert input_media_animation.thumb == (Path.cwd() / 'tests/data/telegram.jpg').as_uri()
 
 
 class TestInputMediaAudio:
@@ -286,6 +310,15 @@ class TestInputMediaAudio:
     title = 'title'
     parse_mode = 'HTML'
     caption_entities = [MessageEntity(MessageEntity.BOLD, 0, 2)]
+
+    def test_slot_behaviour(self, input_media_audio, recwarn, mro_slots):
+        inst = input_media_audio
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.type = 'should give warning', self.type_
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_expected_values(self, input_media_audio):
         assert input_media_audio.type == self.type_
@@ -332,8 +365,8 @@ class TestInputMediaAudio:
         input_media_audio = InputMediaAudio(
             'tests/data/telegram.mp4', thumb='tests/data/telegram.jpg'
         )
-        assert input_media_audio.media == f"file://{Path.cwd() / 'tests/data/telegram.mp4'}"
-        assert input_media_audio.thumb == f"file://{Path.cwd() / 'tests/data/telegram.jpg'}"
+        assert input_media_audio.media == (Path.cwd() / 'tests/data/telegram.mp4/').as_uri()
+        assert input_media_audio.thumb == (Path.cwd() / 'tests/data/telegram.jpg/').as_uri()
 
 
 class TestInputMediaDocument:
@@ -343,6 +376,15 @@ class TestInputMediaDocument:
     parse_mode = 'HTML'
     caption_entities = [MessageEntity(MessageEntity.BOLD, 0, 2)]
     disable_content_type_detection = True
+
+    def test_slot_behaviour(self, input_media_document, recwarn, mro_slots):
+        inst = input_media_document
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.type = 'should give warning', self.type_
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_expected_values(self, input_media_document):
         assert input_media_document.type == self.type_
@@ -388,12 +430,8 @@ class TestInputMediaDocument:
         input_media_document = InputMediaDocument(
             'tests/data/telegram.mp4', thumb='tests/data/telegram.jpg'
         )
-        assert input_media_document.media == 'file://' + str(
-            Path.cwd() / 'tests/data/telegram.mp4'
-        )
-        assert input_media_document.thumb == 'file://' + str(
-            Path.cwd() / 'tests/data/telegram.jpg'
-        )
+        assert input_media_document.media == (Path.cwd() / 'tests/data/telegram.mp4').as_uri()
+        assert input_media_document.thumb == (Path.cwd() / 'tests/data/telegram.jpg').as_uri()
 
 
 @pytest.fixture(scope='function')  # noqa: F811
@@ -409,33 +447,63 @@ def media_group(photo, thumb):  # noqa: F811
 
 class TestSendMediaGroup:
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_media_group_photo(self, bot, chat_id, media_group):
         messages = bot.send_media_group(chat_id, media_group)
         assert isinstance(messages, list)
         assert len(messages) == 3
-        assert all([isinstance(mes, Message) for mes in messages])
-        assert all([mes.media_group_id == messages[0].media_group_id for mes in messages])
+        assert all(isinstance(mes, Message) for mes in messages)
+        assert all(mes.media_group_id == messages[0].media_group_id for mes in messages)
         assert all(mes.caption == f'photo {idx+1}' for idx, mes in enumerate(messages))
         assert all(
             mes.caption_entities == [MessageEntity(MessageEntity.BOLD, 0, 5)] for mes in messages
         )
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_media_group_all_args(self, bot, chat_id, media_group):
         m1 = bot.send_message(chat_id, text="test")
         messages = bot.send_media_group(
-            chat_id, media_group, disable_notification=True, reply_to_message_id=m1.message_id
+            chat_id,
+            media_group,
+            disable_notification=True,
+            reply_to_message_id=m1.message_id,
+            protect_content=True,
         )
         assert isinstance(messages, list)
         assert len(messages) == 3
-        assert all([isinstance(mes, Message) for mes in messages])
-        assert all([mes.media_group_id == messages[0].media_group_id for mes in messages])
+        assert all(isinstance(mes, Message) for mes in messages)
+        assert all(mes.media_group_id == messages[0].media_group_id for mes in messages)
         assert all(mes.caption == f'photo {idx+1}' for idx, mes in enumerate(messages))
         assert all(
             mes.caption_entities == [MessageEntity(MessageEntity.BOLD, 0, 5)] for mes in messages
         )
+        assert all(mes.has_protected_content for mes in messages)
+
+    @flaky(3, 1)
+    def test_send_media_group_custom_filename(
+        self,
+        bot,
+        chat_id,
+        photo_file,  # noqa: F811
+        animation_file,  # noqa: F811
+        audio_file,  # noqa: F811
+        video_file,  # noqa: F811
+        monkeypatch,
+    ):
+        def make_assertion(url, data, **kwargs):
+            result = all(im.media.filename == 'custom_filename' for im in data['media'])
+            # We are a bit hacky here b/c Bot.send_media_group expects a list of Message-dicts
+            return [Message(0, None, None, text=result).to_dict()]
+
+        monkeypatch.setattr(bot.request, 'post', make_assertion)
+
+        media = [
+            InputMediaAnimation(animation_file, filename='custom_filename'),
+            InputMediaAudio(audio_file, filename='custom_filename'),
+            InputMediaPhoto(photo_file, filename='custom_filename'),
+            InputMediaVideo(video_file, filename='custom_filename'),
+        ]
+
+        assert bot.send_media_group(chat_id, media)[0].text is True
 
     def test_send_media_group_with_thumbs(
         self, bot, chat_id, video_file, photo_file, monkeypatch  # noqa: F811
@@ -453,26 +521,30 @@ class TestSendMediaGroup:
             bot.send_media_group(chat_id, [input_video, input_video])
 
     @flaky(3, 1)  # noqa: F811
-    @pytest.mark.timeout(10)  # noqa: F811
     def test_send_media_group_new_files(
         self, bot, chat_id, video_file, photo_file, animation_file  # noqa: F811
     ):  # noqa: F811
         def func():
-            return bot.send_media_group(
-                chat_id, [InputMediaVideo(video_file), InputMediaPhoto(photo_file)]
-            )
+            with open('tests/data/telegram.jpg', 'rb') as file:
+                return bot.send_media_group(
+                    chat_id,
+                    [
+                        InputMediaVideo(video_file),
+                        InputMediaPhoto(photo_file),
+                        InputMediaPhoto(file.read()),
+                    ],
+                )
 
         messages = expect_bad_request(
             func, 'Type of file mismatch', 'Telegram did not accept the file.'
         )
 
         assert isinstance(messages, list)
-        assert len(messages) == 2
-        assert all([isinstance(mes, Message) for mes in messages])
-        assert all([mes.media_group_id == messages[0].media_group_id for mes in messages])
+        assert len(messages) == 3
+        assert all(isinstance(mes, Message) for mes in messages)
+        assert all(mes.media_group_id == messages[0].media_group_id for mes in messages)
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize(
         'default_bot,custom',
         [
@@ -507,7 +579,6 @@ class TestSendMediaGroup:
                 )
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_edit_message_media(self, bot, chat_id, media_group):
         messages = bot.send_media_group(chat_id, media_group)
         cid = messages[-1].chat.id
@@ -516,7 +587,6 @@ class TestSendMediaGroup:
         assert isinstance(new_message, Message)
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_edit_message_media_new_file(self, bot, chat_id, media_group, thumb_file):
         messages = bot.send_media_group(chat_id, media_group)
         cid = messages[-1].chat.id
@@ -525,3 +595,94 @@ class TestSendMediaGroup:
             chat_id=cid, message_id=mid, media=InputMediaPhoto(thumb_file)
         )
         assert isinstance(new_message, Message)
+
+    def test_edit_message_media_with_thumb(
+        self, bot, chat_id, video_file, photo_file, monkeypatch  # noqa: F811
+    ):
+        def test(*args, **kwargs):
+            data = kwargs['fields']
+            video_check = data[input_video.media.attach] == input_video.media.field_tuple
+            thumb_check = data[input_video.thumb.attach] == input_video.thumb.field_tuple
+            result = video_check and thumb_check
+            raise Exception(f"Test was {'successful' if result else 'failing'}")
+
+        monkeypatch.setattr('telegram.utils.request.Request._request_wrapper', test)
+        input_video = InputMediaVideo(video_file, thumb=photo_file)
+        with pytest.raises(Exception, match='Test was successful'):
+            bot.edit_message_media(chat_id=chat_id, message_id=123, media=input_video)
+
+    @flaky(3, 1)
+    @pytest.mark.parametrize(
+        'default_bot', [{'parse_mode': ParseMode.HTML}], indirect=True, ids=['HTML-Bot']
+    )
+    @pytest.mark.parametrize('media_type', ['animation', 'document', 'audio', 'photo', 'video'])
+    def test_edit_message_media_default_parse_mode(
+        self,
+        chat_id,
+        default_bot,
+        media_type,
+        animation,  # noqa: F811
+        document,  # noqa: F811
+        audio,  # noqa: F811
+        photo,  # noqa: F811
+        video,  # noqa: F811
+    ):
+        html_caption = '<b>bold</b> <i>italic</i> <code>code</code>'
+        markdown_caption = '*bold* _italic_ `code`'
+        test_caption = 'bold italic code'
+        test_entities = [
+            MessageEntity(MessageEntity.BOLD, 0, 4),
+            MessageEntity(MessageEntity.ITALIC, 5, 6),
+            MessageEntity(MessageEntity.CODE, 12, 4),
+        ]
+
+        def build_media(parse_mode, med_type):
+            kwargs = {}
+            if parse_mode != ParseMode.HTML:
+                kwargs['parse_mode'] = parse_mode
+                kwargs['caption'] = markdown_caption
+            else:
+                kwargs['caption'] = html_caption
+
+            if med_type == 'animation':
+                return InputMediaAnimation(animation, **kwargs)
+            if med_type == 'document':
+                return InputMediaDocument(document, **kwargs)
+            if med_type == 'audio':
+                return InputMediaAudio(audio, **kwargs)
+            if med_type == 'photo':
+                return InputMediaPhoto(photo, **kwargs)
+            if med_type == 'video':
+                return InputMediaVideo(video, **kwargs)
+
+        message = default_bot.send_photo(chat_id, photo)
+
+        message = default_bot.edit_message_media(
+            message.chat_id,
+            message.message_id,
+            media=build_media(parse_mode=ParseMode.HTML, med_type=media_type),
+        )
+        assert message.caption == test_caption
+        assert message.caption_entities == test_entities
+
+        # Remove caption to avoid "Message not changed"
+        message.edit_caption()
+
+        message = default_bot.edit_message_media(
+            message.chat_id,
+            message.message_id,
+            media=build_media(parse_mode=ParseMode.MARKDOWN_V2, med_type=media_type),
+        )
+        assert message.caption == test_caption
+        assert message.caption_entities == test_entities
+
+        # Remove caption to avoid "Message not changed"
+        message.edit_caption()
+
+        message = default_bot.edit_message_media(
+            message.chat_id,
+            message.message_id,
+            media=build_media(parse_mode=None, med_type=media_type),
+        )
+        assert message.caption == markdown_caption
+        assert message.caption_entities == []

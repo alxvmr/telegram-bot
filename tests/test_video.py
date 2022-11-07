@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -22,9 +22,10 @@ from pathlib import Path
 import pytest
 from flaky import flaky
 
-from telegram import Video, TelegramError, Voice, PhotoSize, MessageEntity
+from telegram import Video, TelegramError, Voice, PhotoSize, MessageEntity, Bot
 from telegram.error import BadRequest
 from telegram.utils.helpers import escape_markdown
+from tests.conftest import check_shortcut_call, check_shortcut_signature, check_defaults_handling
 
 
 @pytest.fixture(scope='function')
@@ -53,11 +54,19 @@ class TestVideo:
     thumb_height = 320
     thumb_file_size = 1767
 
-    caption = u'<b>VideoTest</b> - *Caption*'
+    caption = '<b>VideoTest</b> - *Caption*'
     video_file_url = 'https://python-telegram-bot.org/static/testfiles/telegram.mp4'
 
     video_file_id = '5a3128a4d2a04750b5b58397f3b5e812'
     video_file_unique_id = 'adc3145fd2e84d95b64d68eaa22aa33e'
+
+    def test_slot_behaviour(self, video, mro_slots, recwarn):
+        for attr in video.__slots__:
+            assert getattr(video, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not video.__dict__, f"got missing slot(s): {video.__dict__}"
+        assert len(mro_slots(video)) == len(set(mro_slots(video))), "duplicate slot"
+        video.custom, video.width = 'should give warning', self.width
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_creation(self, video):
         # Make sure file has been uploaded.
@@ -81,7 +90,6 @@ class TestVideo:
         assert video.mime_type == self.mime_type
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_all_args(self, bot, chat_id, video_file, video, thumb_file):
         message = bot.send_video(
             chat_id,
@@ -90,6 +98,7 @@ class TestVideo:
             caption=self.caption,
             supports_streaming=self.supports_streaming,
             disable_notification=False,
+            protect_content=True,
             width=video.width,
             height=video.height,
             parse_mode='Markdown',
@@ -113,9 +122,18 @@ class TestVideo:
         assert message.video.thumb.height == self.thumb_height
 
         assert message.video.file_name == self.file_name
+        assert message.has_protected_content
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
+    def test_send_video_custom_filename(self, bot, chat_id, video_file, monkeypatch):
+        def make_assertion(url, data, **kwargs):
+            return data['video'].filename == 'custom_filename'
+
+        monkeypatch.setattr(bot.request, 'post', make_assertion)
+
+        assert bot.send_video(chat_id, video_file, filename='custom_filename')
+
+    @flaky(3, 1)
     def test_get_and_download(self, bot, video):
         new_file = bot.get_file(video.file_id)
 
@@ -129,7 +147,6 @@ class TestVideo:
         assert os.path.isfile('telegram.mp4')
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_mp4_file_url(self, bot, chat_id, video):
         message = bot.send_video(chat_id, self.video_file_url, caption=self.caption)
 
@@ -155,7 +172,6 @@ class TestVideo:
         assert message.caption == self.caption
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_send_video_caption_entities(self, bot, chat_id, video):
         test_string = 'Italic Bold Code'
         entities = [
@@ -169,7 +185,6 @@ class TestVideo:
         assert message.caption_entities == entities
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_resend(self, bot, chat_id, video):
         message = bot.send_video(chat_id, video.file_id)
 
@@ -184,7 +199,6 @@ class TestVideo:
         assert message
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize('default_bot', [{'parse_mode': 'Markdown'}], indirect=True)
     def test_send_video_default_parse_mode_1(self, default_bot, chat_id, video):
         test_string = 'Italic Bold Code'
@@ -195,7 +209,6 @@ class TestVideo:
         assert message.caption == test_string
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize('default_bot', [{'parse_mode': 'Markdown'}], indirect=True)
     def test_send_video_default_parse_mode_2(self, default_bot, chat_id, video):
         test_markdown_string = '_Italic_ *Bold* `Code`'
@@ -207,7 +220,6 @@ class TestVideo:
         assert message.caption_markdown == escape_markdown(test_markdown_string)
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize('default_bot', [{'parse_mode': 'Markdown'}], indirect=True)
     def test_send_video_default_parse_mode_3(self, default_bot, chat_id, video):
         test_markdown_string = '_Italic_ *Bold* `Code`'
@@ -221,7 +233,7 @@ class TestVideo:
     def test_send_video_local_files(self, monkeypatch, bot, chat_id):
         # For just test that the correct paths are passed as we have no local bot API set up
         test_flag = False
-        expected = f"file://{Path.cwd() / 'tests/data/telegram.jpg'}"
+        expected = (Path.cwd() / 'tests/data/telegram.jpg/').as_uri()
         file = 'tests/data/telegram.jpg'
 
         def make_assertion(_, data, *args, **kwargs):
@@ -231,9 +243,9 @@ class TestVideo:
         monkeypatch.setattr(bot, '_post', make_assertion)
         bot.send_video(chat_id, file, thumb=file)
         assert test_flag
+        monkeypatch.delattr(bot, '_post')
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     @pytest.mark.parametrize(
         'default_bot,custom',
         [
@@ -303,13 +315,11 @@ class TestVideo:
         assert video_dict['file_name'] == video.file_name
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_error_send_empty_file(self, bot, chat_id):
         with pytest.raises(TelegramError):
             bot.send_video(chat_id, open(os.devnull, 'rb'))
 
     @flaky(3, 1)
-    @pytest.mark.timeout(10)
     def test_error_send_empty_file_id(self, bot, chat_id):
         with pytest.raises(TelegramError):
             bot.send_video(chat_id, '')
@@ -319,10 +329,14 @@ class TestVideo:
             bot.send_video(chat_id=chat_id)
 
     def test_get_file_instance_method(self, monkeypatch, video):
-        def test(*args, **kwargs):
-            return args[1] == video.file_id
+        def make_assertion(*_, **kwargs):
+            return kwargs['file_id'] == video.file_id
 
-        monkeypatch.setattr('telegram.Bot.get_file', test)
+        assert check_shortcut_signature(Video.get_file, Bot.get_file, ['file_id'], [])
+        assert check_shortcut_call(video.get_file, video.bot, 'get_file')
+        assert check_defaults_handling(video.get_file, video.bot)
+
+        monkeypatch.setattr(video.bot, 'get_file', make_assertion)
         assert video.get_file()
 
     def test_equality(self, video):

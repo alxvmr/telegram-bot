@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -71,6 +71,15 @@ class TestMessageHandler:
     test_flag = False
     SRE_TYPE = type(re.match("", ""))
 
+    def test_slot_behaviour(self, recwarn, mro_slots):
+        handler = MessageHandler(Filters.all, self.callback_basic)
+        for attr in handler.__slots__:
+            assert getattr(handler, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not handler.__dict__, f"got missing slot(s): {handler.__dict__}"
+        assert len(mro_slots(handler)) == len(set(mro_slots(handler))), "duplicate slot"
+        handler.custom, handler.callback = 'should give warning', self.callback_basic
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
+
     @pytest.fixture(autouse=True)
     def reset(self):
         self.test_flag = False
@@ -121,13 +130,13 @@ class TestMessageHandler:
 
     def callback_context_regex1(self, update, context):
         if context.matches:
-            types = all([type(res) == self.SRE_TYPE for res in context.matches])
+            types = all(type(res) is self.SRE_TYPE for res in context.matches)
             num = len(context.matches) == 1
             self.test_flag = types and num
 
     def callback_context_regex2(self, update, context):
         if context.matches:
-            types = all([type(res) == self.SRE_TYPE for res in context.matches])
+            types = all(type(res) is self.SRE_TYPE for res in context.matches)
             num = len(context.matches) == 2
             self.test_flag = types and num
 
@@ -140,11 +149,23 @@ class TestMessageHandler:
         assert self.test_flag
 
     def test_deprecation_warning(self):
-        with pytest.warns(TelegramDeprecationWarning, match='See https://git.io/fxJuV'):
+        with pytest.warns(
+            TelegramDeprecationWarning,
+            match='See https://github.com/python-telegram-bot/python-telegram-bot/wiki'
+            '/Transition-guide-to-Version-12.0',
+        ):
             MessageHandler(None, self.callback_basic, edited_updates=True)
-        with pytest.warns(TelegramDeprecationWarning, match='See https://git.io/fxJuV'):
+        with pytest.warns(
+            TelegramDeprecationWarning,
+            match='See https://github.com/python-telegram-bot/python-telegram-bot/wiki'
+            '/Transition-guide-to-Version-12.0',
+        ):
             MessageHandler(None, self.callback_basic, message_updates=False)
-        with pytest.warns(TelegramDeprecationWarning, match='See https://git.io/fxJuV'):
+        with pytest.warns(
+            TelegramDeprecationWarning,
+            match='See https://github.com/python-telegram-bot/python-telegram-bot/wiki'
+            '/Transition-guide-to-Version-12.0',
+        ):
             MessageHandler(None, self.callback_basic, channel_post_updates=True)
 
     def test_edited_deprecated(self, message):

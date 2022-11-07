@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -31,16 +31,22 @@ class InlineQueryResult(TelegramObject):
     Objects of this class are comparable in terms of equality. Two objects of this class are
     considered equal, if their :attr:`id` is equal.
 
-    Attributes:
-        type (:obj:`str`): Type of the result.
-        id (:obj:`str`): Unique identifier for this result, 1-64 Bytes.
+    Note:
+        All URLs passed in inline query results will be available to end users and therefore must
+        be assumed to be *public*.
 
     Args:
         type (:obj:`str`): Type of the result.
         id (:obj:`str`): Unique identifier for this result, 1-64 Bytes.
         **kwargs (:obj:`dict`): Arbitrary keyword arguments.
 
+    Attributes:
+        type (:obj:`str`): Type of the result.
+        id (:obj:`str`): Unique identifier for this result, 1-64 Bytes.
+
     """
+
+    __slots__ = ('type', 'id', '_id_attrs')
 
     def __init__(self, type: str, id: str, **_kwargs: Any):
         # Required
@@ -49,15 +55,8 @@ class InlineQueryResult(TelegramObject):
 
         self._id_attrs = (self.id,)
 
-    @property
-    def _has_parse_mode(self) -> bool:
-        return hasattr(self, 'parse_mode')
-
-    @property
-    def _has_input_message_content(self) -> bool:
-        return hasattr(self, 'input_message_content')
-
     def to_dict(self) -> JSONDict:
+        """See :meth:`telegram.TelegramObject.to_dict`."""
         data = super().to_dict()
 
         # pylint: disable=E1101

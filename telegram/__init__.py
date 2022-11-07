@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -20,11 +20,29 @@
 
 from .base import TelegramObject
 from .botcommand import BotCommand
+from .webappdata import WebAppData
+from .webappinfo import WebAppInfo
+from .sentwebappmessage import SentWebAppMessage
+from .menubutton import MenuButton, MenuButtonCommands, MenuButtonDefault, MenuButtonWebApp
+from .loginurl import LoginUrl
+from .games.callbackgame import CallbackGame
 from .user import User
 from .files.chatphoto import ChatPhoto
 from .chat import Chat
+from .chatadministratorrights import ChatAdministratorRights
 from .chatlocation import ChatLocation
-from .chatmember import ChatMember
+from .chatinvitelink import ChatInviteLink
+from .chatjoinrequest import ChatJoinRequest
+from .chatmember import (
+    ChatMember,
+    ChatMemberOwner,
+    ChatMemberAdministrator,
+    ChatMemberMember,
+    ChatMemberRestricted,
+    ChatMemberLeft,
+    ChatMemberBanned,
+)
+from .chatmemberupdated import ChatMemberUpdated
 from .chatpermissions import ChatPermissions
 from .files.photosize import PhotoSize
 from .files.audio import Audio
@@ -40,8 +58,8 @@ from .files.videonote import VideoNote
 from .chataction import ChatAction
 from .dice import Dice
 from .userprofilephotos import UserProfilePhotos
-from .keyboardbutton import KeyboardButton
 from .keyboardbuttonpolltype import KeyboardButtonPollType
+from .keyboardbutton import KeyboardButton
 from .replymarkup import ReplyMarkup
 from .replykeyboardmarkup import ReplyKeyboardMarkup
 from .replykeyboardremove import ReplyKeyboardRemove
@@ -54,9 +72,19 @@ from .messageentity import MessageEntity
 from .messageid import MessageId
 from .games.game import Game
 from .poll import Poll, PollOption, PollAnswer
-from .loginurl import LoginUrl
+from .voicechat import (
+    VoiceChatStarted,
+    VoiceChatEnded,
+    VoiceChatParticipantsInvited,
+    VoiceChatScheduled,
+)
+from .videochat import (
+    VideoChatStarted,
+    VideoChatEnded,
+    VideoChatParticipantsInvited,
+    VideoChatScheduled,
+)
 from .proximityalerttriggered import ProximityAlertTriggered
-from .games.callbackgame import CallbackGame
 from .payment.shippingaddress import ShippingAddress
 from .payment.orderinfo import OrderInfo
 from .payment.successfulpayment import SuccessfulPayment
@@ -68,6 +96,7 @@ from .passport.encryptedpassportelement import EncryptedPassportElement
 from .passport.passportdata import PassportData
 from .inline.inlinekeyboardbutton import InlineKeyboardButton
 from .inline.inlinekeyboardmarkup import InlineKeyboardMarkup
+from .messageautodeletetimerchanged import MessageAutoDeleteTimerChanged
 from .message import Message
 from .callbackquery import CallbackQuery
 from .choseninlineresult import ChosenInlineResult
@@ -97,8 +126,9 @@ from .inline.inlinequeryresultgame import InlineQueryResultGame
 from .inline.inputtextmessagecontent import InputTextMessageContent
 from .inline.inputlocationmessagecontent import InputLocationMessageContent
 from .inline.inputvenuemessagecontent import InputVenueMessageContent
-from .inline.inputcontactmessagecontent import InputContactMessageContent
 from .payment.labeledprice import LabeledPrice
+from .inline.inputinvoicemessagecontent import InputInvoiceMessageContent
+from .inline.inputcontactmessagecontent import InputContactMessageContent
 from .payment.shippingoption import ShippingOption
 from .payment.precheckoutquery import PreCheckoutQuery
 from .payment.shippingquery import ShippingQuery
@@ -139,31 +169,73 @@ from .passport.credentials import (
     Credentials,
     DataCredentials,
     SecureData,
+    SecureValue,
     FileCredentials,
     TelegramDecryptionError,
 )
+from .botcommandscope import (
+    BotCommandScope,
+    BotCommandScopeDefault,
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeAllGroupChats,
+    BotCommandScopeAllChatAdministrators,
+    BotCommandScopeChat,
+    BotCommandScopeChatAdministrators,
+    BotCommandScopeChatMember,
+)
 from .bot import Bot
-from .version import __version__  # noqa: F401
+from .version import __version__, bot_api_version  # noqa: F401
 
 __author__ = 'devs@python-telegram-bot.org'
 
-__all__ = [
+__all__ = (  # Keep this alphabetically ordered
+    'Animation',
     'Audio',
     'Bot',
-    'Chat',
-    'ChatMember',
-    'ChatPermissions',
-    'ChatAction',
-    'ChosenInlineResult',
+    'BotCommand',
+    'BotCommandScope',
+    'BotCommandScopeAllChatAdministrators',
+    'BotCommandScopeAllGroupChats',
+    'BotCommandScopeAllPrivateChats',
+    'BotCommandScopeChat',
+    'BotCommandScopeChatAdministrators',
+    'BotCommandScopeChatMember',
+    'BotCommandScopeDefault',
+    'CallbackGame',
     'CallbackQuery',
+    'Chat',
+    'ChatAdministratorRights',
+    'ChatAction',
+    'ChatInviteLink',
+    'ChatJoinRequest',
+    'ChatLocation',
+    'ChatMember',
+    'ChatMemberOwner',
+    'ChatMemberAdministrator',
+    'ChatMemberMember',
+    'ChatMemberRestricted',
+    'ChatMemberLeft',
+    'ChatMemberBanned',
+    'ChatMemberUpdated',
+    'ChatPermissions',
+    'ChatPhoto',
+    'ChosenInlineResult',
     'Contact',
+    'Credentials',
+    'DataCredentials',
+    'Dice',
     'Document',
+    'EncryptedCredentials',
+    'EncryptedPassportElement',
     'File',
+    'FileCredentials',
     'ForceReply',
+    'Game',
+    'GameHighScore',
+    'IdDocumentData',
     'InlineKeyboardButton',
     'InlineKeyboardMarkup',
     'InlineQuery',
-    'InlineQueryResult',
     'InlineQueryResult',
     'InlineQueryResultArticle',
     'InlineQueryResultAudio',
@@ -177,6 +249,7 @@ __all__ = [
     'InlineQueryResultCachedVoice',
     'InlineQueryResultContact',
     'InlineQueryResultDocument',
+    'InlineQueryResultGame',
     'InlineQueryResultGif',
     'InlineQueryResultLocation',
     'InlineQueryResultMpeg4Gif',
@@ -184,28 +257,77 @@ __all__ = [
     'InlineQueryResultVenue',
     'InlineQueryResultVideo',
     'InlineQueryResultVoice',
-    'InlineQueryResultGame',
     'InputContactMessageContent',
     'InputFile',
+    'InputInvoiceMessageContent',
     'InputLocationMessageContent',
+    'InputMedia',
+    'InputMediaAnimation',
+    'InputMediaAudio',
+    'InputMediaDocument',
+    'InputMediaPhoto',
+    'InputMediaVideo',
     'InputMessageContent',
     'InputTextMessageContent',
     'InputVenueMessageContent',
+    'Invoice',
+    'KeyboardButton',
+    'KeyboardButtonPollType',
+    'LabeledPrice',
     'Location',
-    'ChatLocation',
-    'ProximityAlertTriggered',
-    'EncryptedCredentials',
-    'PassportFile',
-    'EncryptedPassportElement',
-    'PassportData',
+    'LoginUrl',
+    'MAX_CAPTION_LENGTH',
+    'MAX_FILESIZE_DOWNLOAD',
+    'MAX_FILESIZE_UPLOAD',
+    'MAX_MESSAGES_PER_MINUTE_PER_GROUP',
+    'MAX_MESSAGES_PER_SECOND',
+    'MAX_MESSAGES_PER_SECOND_PER_CHAT',
+    'MAX_MESSAGE_LENGTH',
+    'MaskPosition',
+    'MenuButton',
+    'MenuButtonCommands',
+    'MenuButtonDefault',
+    'MenuButtonWebApp',
     'Message',
+    'MessageAutoDeleteTimerChanged',
     'MessageEntity',
+    'MessageId',
+    'OrderInfo',
     'ParseMode',
+    'PassportData',
+    'PassportElementError',
+    'PassportElementErrorDataField',
+    'PassportElementErrorFile',
+    'PassportElementErrorFiles',
+    'PassportElementErrorFrontSide',
+    'PassportElementErrorReverseSide',
+    'PassportElementErrorSelfie',
+    'PassportElementErrorTranslationFile',
+    'PassportElementErrorTranslationFiles',
+    'PassportElementErrorUnspecified',
+    'PassportFile',
+    'PersonalDetails',
     'PhotoSize',
-    'ReplyKeyboardRemove',
+    'Poll',
+    'PollAnswer',
+    'PollOption',
+    'PreCheckoutQuery',
+    'ProximityAlertTriggered',
     'ReplyKeyboardMarkup',
+    'ReplyKeyboardRemove',
     'ReplyMarkup',
+    'ResidentialAddress',
+    'SUPPORTED_WEBHOOK_PORTS',
+    'SecureData',
+    'SecureValue',
+    'SentWebAppMessage',
+    'ShippingAddress',
+    'ShippingOption',
+    'ShippingQuery',
     'Sticker',
+    'StickerSet',
+    'SuccessfulPayment',
+    'TelegramDecryptionError',
     'TelegramError',
     'TelegramObject',
     'Update',
@@ -213,65 +335,17 @@ __all__ = [
     'UserProfilePhotos',
     'Venue',
     'Video',
-    'Voice',
-    'MAX_MESSAGE_LENGTH',
-    'MAX_CAPTION_LENGTH',
-    'SUPPORTED_WEBHOOK_PORTS',
-    'MAX_FILESIZE_DOWNLOAD',
-    'MAX_FILESIZE_UPLOAD',
-    'MAX_MESSAGES_PER_SECOND_PER_CHAT',
-    'MAX_MESSAGES_PER_SECOND',
-    'MAX_MESSAGES_PER_MINUTE_PER_GROUP',
-    'WebhookInfo',
-    'Animation',
-    'Game',
-    'GameHighScore',
+    'VideoChatEnded',
+    'VideoChatParticipantsInvited',
+    'VideoChatScheduled',
+    'VideoChatStarted',
     'VideoNote',
-    'LabeledPrice',
-    'SuccessfulPayment',
-    'ShippingOption',
-    'ShippingAddress',
-    'PreCheckoutQuery',
-    'OrderInfo',
-    'Invoice',
-    'ShippingQuery',
-    'ChatPhoto',
-    'StickerSet',
-    'MaskPosition',
-    'CallbackGame',
-    'InputMedia',
-    'InputMediaPhoto',
-    'InputMediaVideo',
-    'PassportElementError',
-    'PassportElementErrorFile',
-    'PassportElementErrorReverseSide',
-    'PassportElementErrorFrontSide',
-    'PassportElementErrorFiles',
-    'PassportElementErrorDataField',
-    'PassportElementErrorFile',
-    'Credentials',
-    'DataCredentials',
-    'SecureData',
-    'FileCredentials',
-    'IdDocumentData',
-    'PersonalDetails',
-    'ResidentialAddress',
-    'InputMediaVideo',
-    'InputMediaAnimation',
-    'InputMediaAudio',
-    'InputMediaDocument',
-    'TelegramDecryptionError',
-    'PassportElementErrorSelfie',
-    'PassportElementErrorTranslationFile',
-    'PassportElementErrorTranslationFiles',
-    'PassportElementErrorUnspecified',
-    'Poll',
-    'PollOption',
-    'PollAnswer',
-    'LoginUrl',
-    'KeyboardButton',
-    'KeyboardButtonPollType',
-    'Dice',
-    'BotCommand',
-    'MessageId',
-]
+    'Voice',
+    'VoiceChatStarted',
+    'VoiceChatEnded',
+    'VoiceChatScheduled',
+    'VoiceChatParticipantsInvited',
+    'WebAppData',
+    'WebAppInfo',
+    'WebhookInfo',
+)

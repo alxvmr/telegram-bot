@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -33,6 +33,14 @@ class TestGameHighScore:
     position = 12
     user = User(2, 'test user', False)
     score = 42
+
+    def test_slot_behaviour(self, game_highscore, recwarn, mro_slots):
+        for attr in game_highscore.__slots__:
+            assert getattr(game_highscore, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not game_highscore.__dict__, f"got missing slot(s): {game_highscore.__dict__}"
+        assert len(mro_slots(game_highscore)) == len(set(mro_slots(game_highscore))), "same slot"
+        game_highscore.custom, game_highscore.position = 'should give warning', self.position
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_de_json(self, bot):
         json_dict = {'position': self.position, 'user': self.user.to_dict(), 'score': self.score}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,11 +24,22 @@ from telegram import User
 
 
 class TestDefault:
+    def test_slot_behaviour(self, recwarn, mro_slots):
+        a = Defaults(parse_mode='HTML', quote=True)
+        for attr in a.__slots__:
+            assert getattr(a, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not a.__dict__, f"got missing slot(s): {a.__dict__}"
+        assert len(mro_slots(a)) == len(set(mro_slots(a))), "duplicate slot"
+        a.custom, a._parse_mode = 'should give warning', a._parse_mode
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
+
     def test_data_assignment(self, cdp):
         defaults = Defaults()
 
         with pytest.raises(AttributeError):
             defaults.parse_mode = True
+        with pytest.raises(AttributeError):
+            defaults.explanation_parse_mode = True
         with pytest.raises(AttributeError):
             defaults.disable_notification = True
         with pytest.raises(AttributeError):

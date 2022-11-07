@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,10 +16,10 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
-
 import pytest
 
-from telegram import Update, User, ShippingAddress, ShippingQuery
+from telegram import Update, User, ShippingAddress, ShippingQuery, Bot
+from tests.conftest import check_shortcut_call, check_shortcut_signature, check_defaults_handling
 
 
 @pytest.fixture(scope='class')
@@ -38,6 +38,15 @@ class TestShippingQuery:
     invoice_payload = 'invoice_payload'
     from_user = User(0, '', False)
     shipping_address = ShippingAddress('GB', '', 'London', '12 Grimmauld Place', '', 'WC1')
+
+    def test_slot_behaviour(self, shipping_query, recwarn, mro_slots):
+        inst = shipping_query
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.id = 'should give warning', self.id_
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_de_json(self, bot):
         json_dict = {
@@ -64,11 +73,19 @@ class TestShippingQuery:
         assert shipping_query_dict['shipping_address'] == shipping_query.shipping_address.to_dict()
 
     def test_answer(self, monkeypatch, shipping_query):
-        def test(*args, **kwargs):
-            return args[0] == shipping_query.id
+        def make_assertion(*_, **kwargs):
+            return kwargs['shipping_query_id'] == shipping_query.id
 
-        monkeypatch.setattr(shipping_query.bot, 'answer_shipping_query', test)
-        assert shipping_query.answer()
+        assert check_shortcut_signature(
+            ShippingQuery.answer, Bot.answer_shipping_query, ['shipping_query_id'], []
+        )
+        assert check_shortcut_call(
+            shipping_query.answer, shipping_query.bot, 'answer_shipping_query'
+        )
+        assert check_defaults_handling(shipping_query.answer, shipping_query.bot)
+
+        monkeypatch.setattr(shipping_query.bot, 'answer_shipping_query', make_assertion)
+        assert shipping_query.answer(ok=True)
 
     def test_equality(self):
         a = ShippingQuery(self.id_, self.from_user, self.invoice_payload, self.shipping_address)

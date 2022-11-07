@@ -2,7 +2,7 @@
 # pylint: disable=R0903
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -41,23 +41,31 @@ class Dice(TelegramObject):
         3 indicates that the basket was missed. However, this behaviour is undocumented and might
         be changed by Telegram.
 
-        If :attr:`emoji` is "⚽", a value of 3 to 5 currently scores a goal, while a value of 1 to
+        If :attr:`emoji` is "⚽", a value of 4 to 5 currently scores a goal, while a value of 1 to
         3 indicates that the goal was missed. However, this behaviour is undocumented and might
         be changed by Telegram.
 
+        If :attr:`emoji` is "🎳", a value of 6 knocks all the pins, while a value of 1 means all
+        the pins were missed. However, this behaviour is undocumented and might be changed by
+        Telegram.
+
         If :attr:`emoji` is "🎰", each value corresponds to a unique combination of symbols, which
-        can be found at our `wiki <https://git.io/JkeC6>`_. However, this behaviour is undocumented
-        and might be changed by Telegram.
+        can be found at our `wiki <https://github.com/python-telegram-bot/python-telegram-bot/\
+        wiki/Code-snippets#map-a-slot-machine-dice-value-to-the-corresponding-symbols>`_.
+        However, this behaviour is undocumented and might be changed by Telegram.
+
+    Args:
+        value (:obj:`int`): Value of the dice. 1-6 for dice, darts and bowling balls, 1-5 for
+            basketball and football/soccer ball, 1-64 for slot machine.
+        emoji (:obj:`str`): Emoji on which the dice throw animation is based.
 
     Attributes:
         value (:obj:`int`): Value of the dice.
         emoji (:obj:`str`): Emoji on which the dice throw animation is based.
 
-    Args:
-        value (:obj:`int`): Value of the dice. 1-6 for dice and darts, 1-5 for basketball and
-            football/soccer ball, 1-64 for slot machine.
-        emoji (:obj:`str`): Emoji on which the dice throw animation is based.
     """
+
+    __slots__ = ('emoji', 'value', '_id_attrs')
 
     def __init__(self, value: int, emoji: str, **_kwargs: Any):
         self.value = value
@@ -65,7 +73,7 @@ class Dice(TelegramObject):
 
         self._id_attrs = (self.value, self.emoji)
 
-    DICE: ClassVar[str] = constants.DICE_DICE
+    DICE: ClassVar[str] = constants.DICE_DICE  # skipcq: PTC-W0052
     """:const:`telegram.constants.DICE_DICE`"""
     DARTS: ClassVar[str] = constants.DICE_DARTS
     """:const:`telegram.constants.DICE_DARTS`"""
@@ -75,5 +83,11 @@ class Dice(TelegramObject):
     """:const:`telegram.constants.DICE_FOOTBALL`"""
     SLOT_MACHINE: ClassVar[str] = constants.DICE_SLOT_MACHINE
     """:const:`telegram.constants.DICE_SLOT_MACHINE`"""
+    BOWLING: ClassVar[str] = constants.DICE_BOWLING
+    """
+    :const:`telegram.constants.DICE_BOWLING`
+
+    .. versionadded:: 13.4
+    """
     ALL_EMOJI: ClassVar[List[str]] = constants.DICE_ALL_EMOJI
     """:const:`telegram.constants.DICE_ALL_EMOJI`"""

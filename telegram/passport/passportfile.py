@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -21,7 +21,8 @@
 from typing import TYPE_CHECKING, Any, List, Optional
 
 from telegram import TelegramObject
-from telegram.utils.types import JSONDict
+from telegram.utils.helpers import DEFAULT_NONE
+from telegram.utils.types import JSONDict, ODVInput
 
 if TYPE_CHECKING:
     from telegram import Bot, File, FileCredentials
@@ -35,15 +36,6 @@ class PassportFile(TelegramObject):
     Objects of this class are comparable in terms of equality. Two objects of this class are
     considered equal, if their :attr:`file_unique_id` is equal.
 
-    Attributes:
-        file_id (:obj:`str`): Identifier for this file.
-        file_unique_id (:obj:`str`): Unique identifier for this file, which
-            is supposed to be the same over time and for different bots.
-            Can't be used to download or reuse the file.
-        file_size (:obj:`int`): File size.
-        file_date (:obj:`int`): Unix time when the file was uploaded.
-        bot (:class:`telegram.Bot`): Optional. The Bot to use for instance methods.
-
     Args:
         file_id (:obj:`str`): Identifier for this file, which can be used to download
             or reuse the file.
@@ -55,7 +47,26 @@ class PassportFile(TelegramObject):
         bot (:class:`telegram.Bot`, optional): The Bot to use for instance methods.
         **kwargs (:obj:`dict`): Arbitrary keyword arguments.
 
+    Attributes:
+        file_id (:obj:`str`): Identifier for this file.
+        file_unique_id (:obj:`str`): Unique identifier for this file, which
+            is supposed to be the same over time and for different bots.
+            Can't be used to download or reuse the file.
+        file_size (:obj:`int`): File size.
+        file_date (:obj:`int`): Unix time when the file was uploaded.
+        bot (:class:`telegram.Bot`): Optional. The Bot to use for instance methods.
+
     """
+
+    __slots__ = (
+        'file_date',
+        'bot',
+        'file_id',
+        'file_size',
+        '_credentials',
+        'file_unique_id',
+        '_id_attrs',
+    )
 
     def __init__(
         self,
@@ -82,7 +93,19 @@ class PassportFile(TelegramObject):
     def de_json_decrypted(
         cls, data: Optional[JSONDict], bot: 'Bot', credentials: 'FileCredentials'
     ) -> Optional['PassportFile']:
-        data = cls.parse_data(data)
+        """Variant of :meth:`telegram.TelegramObject.de_json` that also takes into account
+        passport credentials.
+
+        Args:
+            data (Dict[:obj:`str`, ...]): The JSON data.
+            bot (:class:`telegram.Bot`): The bot associated with this object.
+            credentials (:class:`telegram.FileCredentials`): The credentials
+
+        Returns:
+            :class:`telegram.PassportFile`:
+
+        """
+        data = cls._parse_data(data)
 
         if not data:
             return None
@@ -95,6 +118,18 @@ class PassportFile(TelegramObject):
     def de_list_decrypted(
         cls, data: Optional[List[JSONDict]], bot: 'Bot', credentials: List['FileCredentials']
     ) -> List[Optional['PassportFile']]:
+        """Variant of :meth:`telegram.TelegramObject.de_list` that also takes into account
+        passport credentials.
+
+        Args:
+            data (Dict[:obj:`str`, ...]): The JSON data.
+            bot (:class:`telegram.Bot`): The bot associated with these objects.
+            credentials (:class:`telegram.FileCredentials`): The credentials
+
+        Returns:
+            List[:class:`telegram.PassportFile`]:
+
+        """
         if not data:
             return []
 
@@ -103,26 +138,23 @@ class PassportFile(TelegramObject):
             for i, passport_file in enumerate(data)
         ]
 
-    def get_file(self, timeout: int = None, api_kwargs: JSONDict = None) -> 'File':
+    def get_file(
+        self, timeout: ODVInput[float] = DEFAULT_NONE, api_kwargs: JSONDict = None
+    ) -> 'File':
         """
         Wrapper over :attr:`telegram.Bot.get_file`. Will automatically assign the correct
         credentials to the returned :class:`telegram.File` if originating from
         :obj:`telegram.PassportData.decrypted_data`.
 
-        Args:
-            timeout (:obj:`int` | :obj:`float`, optional): If this value is specified, use it as
-                the read timeout from the server (instead of the one specified during creation of
-                the connection pool).
-            api_kwargs (:obj:`dict`, optional): Arbitrary keyword arguments to be passed to the
-                Telegram API.
+        For the documentation of the arguments, please see :meth:`telegram.Bot.get_file`.
 
         Returns:
             :class:`telegram.File`
 
         Raises:
-            :class:`telegram.TelegramError`
+            :class:`telegram.error.TelegramError`
 
         """
-        file = self.bot.get_file(self.file_id, timeout=timeout, api_kwargs=api_kwargs)
+        file = self.bot.get_file(file_id=self.file_id, timeout=timeout, api_kwargs=api_kwargs)
         file.set_credentials(self._credentials)
         return file

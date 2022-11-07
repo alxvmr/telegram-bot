@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -33,16 +33,18 @@ class UserProfilePhotos(TelegramObject):
     Objects of this class are comparable in terms of equality. Two objects of this class are
     considered equal, if their :attr:`total_count` and :attr:`photos` are equal.
 
-    Attributes:
-        total_count (:obj:`int`): Total number of profile pictures.
-        photos (List[List[:class:`telegram.PhotoSize`]]): Requested profile pictures.
-
     Args:
         total_count (:obj:`int`): Total number of profile pictures the target user has.
         photos (List[List[:class:`telegram.PhotoSize`]]): Requested profile pictures (in up to 4
             sizes each).
 
+    Attributes:
+        total_count (:obj:`int`): Total number of profile pictures.
+        photos (List[List[:class:`telegram.PhotoSize`]]): Requested profile pictures.
+
     """
+
+    __slots__ = ('photos', 'total_count', '_id_attrs')
 
     def __init__(self, total_count: int, photos: List[List[PhotoSize]], **_kwargs: Any):
         # Required
@@ -53,7 +55,8 @@ class UserProfilePhotos(TelegramObject):
 
     @classmethod
     def de_json(cls, data: Optional[JSONDict], bot: 'Bot') -> Optional['UserProfilePhotos']:
-        data = cls.parse_data(data)
+        """See :meth:`telegram.TelegramObject.de_json`."""
+        data = cls._parse_data(data)
 
         if not data:
             return None
@@ -63,6 +66,7 @@ class UserProfilePhotos(TelegramObject):
         return cls(**data)
 
     def to_dict(self) -> JSONDict:
+        """See :meth:`telegram.TelegramObject.to_dict`."""
         data = super().to_dict()
 
         data['photos'] = []

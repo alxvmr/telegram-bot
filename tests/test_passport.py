@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # flake8: noqa: E501
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -31,27 +31,12 @@ from telegram import (
     TelegramDecryptionError,
 )
 
-# Generated using the scope:
-# {
-#   data: [
-#     {
-#       type: 'personal_details',
-#       native_names: true
-#     },
-#     {
-#       type: 'id_document',
-#       selfie: true,
-#       translation: true
-#     },
-#     {
-#       type: 'address_document',
-#       translation: true
-#     },
-#     'address',
-#     'email'
-#   ],
-#   v: 1
-# }
+
+# Note: All classes in telegram.credentials (except EncryptedCredentials) aren't directly tested
+# here, although they are implicitly tested. Testing for those classes was too much work and not
+# worth it.
+
+
 RAW_PASSPORT_DATA = {
     'credentials': {
         'hash': 'qB4hz2LMcXYhglwz6EvXMMyI3PURisWLXl/iCmCXcSk=',
@@ -230,6 +215,15 @@ class TestPassport:
     driver_license_selfie_credentials_file_hash = 'Cila/qLXSBH7DpZFbb5bRZIRxeFW2uv/ulL0u0JNsYI='
     driver_license_selfie_credentials_secret = 'tivdId6RNYNsvXYPppdzrbxOBuBOr9wXRPDcCvnXU7E='
 
+    def test_slot_behaviour(self, passport_data, mro_slots, recwarn):
+        inst = passport_data
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
+        inst.custom, inst.data = 'should give warning', passport_data.data
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
+
     def test_creation(self, passport_data):
         assert isinstance(passport_data, PassportData)
 
@@ -405,7 +399,7 @@ class TestPassport:
 
     def test_bot_init_invalid_key(self, bot):
         with pytest.raises(TypeError):
-            Bot(bot.token, private_key=u'Invalid key!')
+            Bot(bot.token, private_key='Invalid key!')
 
         with pytest.raises(ValueError):
             Bot(bot.token, private_key=b'Invalid key!')
@@ -442,8 +436,8 @@ class TestPassport:
         selfie = passport_data.decrypted_data[1].selfie
 
         # NOTE: file_unique_id is not used in the get_file method, so it is passed directly
-        def get_file(*args, **kwargs):
-            return File(args[0], selfie.file_unique_id)
+        def get_file(*_, **kwargs):
+            return File(kwargs['file_id'], selfie.file_unique_id)
 
         monkeypatch.setattr(passport_data.bot, 'get_file', get_file)
         file = selfie.get_file()

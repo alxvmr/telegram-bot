@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -36,7 +36,7 @@ def terminal_summary_wrapper(original, plugin_name):
 @pytest.mark.trylast
 def pytest_configure(config):
     for hookimpl in config.pluginmanager.hook.pytest_terminal_summary._nonwrappers:
-        if hookimpl.plugin_name in fold_plugins.keys():
+        if hookimpl.plugin_name in fold_plugins:
             hookimpl.function = terminal_summary_wrapper(hookimpl.function, hookimpl.plugin_name)
 
 

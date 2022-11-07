@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2020
+# Copyright (C) 2015-2022
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -46,8 +46,21 @@ from telegram import (
     PollOption,
     ProximityAlertTriggered,
     Dice,
+    Bot,
+    ChatAction,
+    VoiceChatScheduled,
+    VoiceChatStarted,
+    VoiceChatEnded,
+    VoiceChatParticipantsInvited,
+    VideoChatScheduled,
+    VideoChatStarted,
+    VideoChatEnded,
+    VideoChatParticipantsInvited,
+    MessageAutoDeleteTimerChanged,
+    WebAppData,
 )
 from telegram.ext import Defaults
+from tests.conftest import check_shortcut_signature, check_shortcut_call, check_defaults_handling
 from tests.test_passport import RAW_PASSPORT_DATA
 
 
@@ -97,7 +110,7 @@ def message(bot):
             )
         },
         {'photo': [PhotoSize('photo_id', 'unique_id', 50, 50)], 'caption': 'photo_file'},
-        {'sticker': Sticker('sticker_id', 'unique_id', 50, 50, True)},
+        {'sticker': Sticker('sticker_id', 'unique_id', 50, 50, True, False, Sticker.REGULAR)},
         {'video': Video('video_id', 'unique_id', 12, 12, 12), 'caption': 'video_file'},
         {'voice': Voice('voice_id', 'unique_id', 5)},
         {'video_note': VideoNote('video_note_id', 'unique_id', 20, 12)},
@@ -112,6 +125,7 @@ def message(bot):
         {'group_chat_created': True},
         {'supergroup_chat_created': True},
         {'channel_chat_created': True},
+        {'message_auto_delete_timer_changed': MessageAutoDeleteTimerChanged(42)},
         {'migrate_to_chat_id': -12345},
         {'migrate_from_chat_id': -54321},
         {'pinned_message': Message(7, None, None, None)},
@@ -155,7 +169,6 @@ def message(bot):
                 ]
             },
         },
-        {'quote': True},
         {'dice': Dice(4, '🎲')},
         {'via_bot': User(9, 'A_Bot', True)},
         {
@@ -163,7 +176,26 @@ def message(bot):
                 User(1, 'John', False), User(2, 'Doe', False), 42
             )
         },
+        {'voice_chat_scheduled': VoiceChatScheduled(datetime.utcnow())},
+        {'voice_chat_started': VoiceChatStarted()},
+        {'voice_chat_ended': VoiceChatEnded(100)},
+        {
+            'voice_chat_participants_invited': VoiceChatParticipantsInvited(
+                [User(1, 'Rem', False), User(2, 'Emilia', False)]
+            )
+        },
         {'sender_chat': Chat(-123, 'discussion_channel')},
+        {'is_automatic_forward': True},
+        {'has_protected_content': True},
+        {'video_chat_scheduled': VideoChatScheduled(datetime.utcnow())},
+        {'video_chat_started': VideoChatStarted()},
+        {'video_chat_ended': VideoChatEnded(100)},
+        {
+            'video_chat_participants_invited': VideoChatParticipantsInvited(
+                [User(1, 'Rem', False), User(2, 'Emilia', False)]
+            )
+        },
+        {'web_app_data': WebAppData('some_data', 'some_button_text')},
     ],
     ids=[
         'forwarded_user',
@@ -192,6 +224,7 @@ def message(bot):
         'group_created',
         'supergroup_created',
         'channel_created',
+        'message_auto_delete_timer_changed',
         'migrated_to',
         'migrated_from',
         'pinned',
@@ -204,11 +237,21 @@ def message(bot):
         'passport_data',
         'poll',
         'reply_markup',
-        'default_quote',
         'dice',
         'via_bot',
         'proximity_alert_triggered',
+        'voice_chat_scheduled',
+        'voice_chat_started',
+        'voice_chat_ended',
+        'voice_chat_participants_invited',
+        'video_chat_scheduled',
+        'video_chat_started',
+        'video_chat_ended',
+        'video_chat_participants_invited',
         'sender_chat',
+        'is_automatic_forward',
+        'has_protected_content',
+        'web_app_data',
     ],
 )
 def message_params(bot, request):
@@ -257,14 +300,15 @@ class TestMessage:
         },
         {'length': 5, 'offset': 57, 'type': 'pre'},
         {'length': 17, 'offset': 64, 'type': 'url'},
-        {'length': 36, 'offset': 86, 'type': 'italic'},
-        {'length': 24, 'offset': 91, 'type': 'bold'},
-        {'length': 4, 'offset': 101, 'type': 'strikethrough'},
-        {'length': 10, 'offset': 124, 'type': 'pre', 'language': 'python'},
+        {'length': 41, 'offset': 86, 'type': 'italic'},
+        {'length': 29, 'offset': 91, 'type': 'bold'},
+        {'length': 9, 'offset': 101, 'type': 'strikethrough'},
+        {'length': 10, 'offset': 129, 'type': 'pre', 'language': 'python'},
+        {'length': 7, 'offset': 141, 'type': 'spoiler'},
     ]
     test_text_v2 = (
         r'Test for <bold, ita_lic, \`code, links, text-mention and `\pre. '
-        'http://google.com and bold nested in strk nested in italic. Python pre.'
+        'http://google.com and bold nested in strk>trgh nested in italic. Python pre. Spoiled.'
     )
     test_message = Message(
         message_id=1,
@@ -286,6 +330,14 @@ class TestMessage:
         caption=test_text_v2,
         caption_entities=[MessageEntity(**e) for e in test_entities_v2],
     )
+
+    def test_slot_behaviour(self, message, recwarn, mro_slots):
+        for attr in message.__slots__:
+            assert getattr(message, attr, 'err') != 'err', f"got extra slot '{attr}'"
+        assert not message.__dict__, f"got missing slot(s): {message.__dict__}"
+        assert len(mro_slots(message)) == len(set(mro_slots(message))), "duplicate slot"
+        message.custom, message.message_id = 'should give warning', self.id_
+        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_all_possibilities_de_json_and_to_dict(self, bot, message_params):
         new = Message.de_json(message_params.to_dict(), bot)
@@ -355,8 +407,9 @@ class TestMessage:
             r'<a href="http://github.com/abc\)def">links</a>, '
             '<a href="tg://user?id=123456789">text-mention</a> and '
             r'<pre>`\pre</pre>. http://google.com '
-            'and <i>bold <b>nested in <s>strk</s> nested in</b> italic</i>. '
-            '<pre><code class="python">Python pre</code></pre>.'
+            'and <i>bold <b>nested in <s>strk&gt;trgh</s> nested in</b> italic</i>. '
+            '<pre><code class="python">Python pre</code></pre>. '
+            '<span class="tg-spoiler">Spoiled</span>.'
         )
         text_html = self.test_message_v2.text_html
         assert text_html == test_html_string
@@ -373,8 +426,9 @@ class TestMessage:
             r'<a href="http://github.com/abc\)def">links</a>, '
             '<a href="tg://user?id=123456789">text-mention</a> and '
             r'<pre>`\pre</pre>. <a href="http://google.com">http://google.com</a> '
-            'and <i>bold <b>nested in <s>strk</s> nested in</b> italic</i>. '
-            '<pre><code class="python">Python pre</code></pre>.'
+            'and <i>bold <b>nested in <s>strk&gt;trgh</s> nested in</b> italic</i>. '
+            '<pre><code class="python">Python pre</code></pre>. '
+            '<span class="tg-spoiler">Spoiled</span>.'
         )
         text_html = self.test_message_v2.text_html_urled
         assert text_html == test_html_string
@@ -394,8 +448,8 @@ class TestMessage:
             r'__Test__ for <*bold*, _ita\_lic_, `\\\`code`, '
             '[links](http://github.com/abc\\\\\\)def), '
             '[text\\-mention](tg://user?id=123456789) and ```\\`\\\\pre```\\. '
-            r'http://google\.com and _bold *nested in ~strk~ nested in* italic_\. '
-            '```python\nPython pre```\\.'
+            r'http://google\.com and _bold *nested in ~strk\>trgh~ nested in* italic_\. '
+            '```python\nPython pre```\\. ||Spoiled||\\.'
         )
         text_markdown = self.test_message_v2.text_markdown_v2
         assert text_markdown == test_md_string
@@ -414,6 +468,10 @@ class TestMessage:
             message.text_markdown
 
         message.entities = [MessageEntity(MessageEntity.STRIKETHROUGH, offset=0, length=4)]
+        with pytest.raises(ValueError):
+            message.text_markdown
+
+        message.entities = [MessageEntity(MessageEntity.SPOILER, offset=0, length=4)]
         with pytest.raises(ValueError):
             message.text_markdown
 
@@ -440,8 +498,8 @@ class TestMessage:
             r'__Test__ for <*bold*, _ita\_lic_, `\\\`code`, '
             '[links](http://github.com/abc\\\\\\)def), '
             '[text\\-mention](tg://user?id=123456789) and ```\\`\\\\pre```\\. '
-            r'[http://google\.com](http://google.com) and _bold *nested in ~strk~ '
-            'nested in* italic_\\. ```python\nPython pre```\\.'
+            r'[http://google\.com](http://google.com) and _bold *nested in ~strk\>trgh~ '
+            'nested in* italic_\\. ```python\nPython pre```\\. ||Spoiled||\\.'
         )
         text_markdown = self.test_message_v2.text_markdown_v2_urled
         assert text_markdown == test_md_string
@@ -464,6 +522,36 @@ class TestMessage:
         )
         assert expected == message.text_markdown
 
+    @pytest.mark.parametrize(
+        "type_",
+        argvalues=[
+            "text_html",
+            "text_html_urled",
+            "text_markdown",
+            "text_markdown_urled",
+            "text_markdown_v2",
+            "text_markdown_v2_urled",
+        ],
+    )
+    def test_text_custom_emoji(self, type_):
+        text = "Look a custom emoji: 😎"
+        expected = "Look a custom emoji: 😎"
+        emoji_entity = MessageEntity(
+            type=MessageEntity.CUSTOM_EMOJI,
+            offset=21,
+            length=2,
+            custom_emoji_id="5472409228461217725",
+        )
+        message = Message(
+            1,
+            from_user=self.from_user,
+            date=self.date,
+            chat=self.chat,
+            text=text,
+            entities=[emoji_entity],
+        )
+        assert expected == message[type_]
+
     def test_caption_html_simple(self):
         test_html_string = (
             '<u>Test</u> for &lt;<b>bold</b>, <i>ita_lic</i>, '
@@ -471,8 +559,9 @@ class TestMessage:
             r'<a href="http://github.com/abc\)def">links</a>, '
             '<a href="tg://user?id=123456789">text-mention</a> and '
             r'<pre>`\pre</pre>. http://google.com '
-            'and <i>bold <b>nested in <s>strk</s> nested in</b> italic</i>. '
-            '<pre><code class="python">Python pre</code></pre>.'
+            'and <i>bold <b>nested in <s>strk&gt;trgh</s> nested in</b> italic</i>. '
+            '<pre><code class="python">Python pre</code></pre>. '
+            '<span class="tg-spoiler">Spoiled</span>.'
         )
         caption_html = self.test_message_v2.caption_html
         assert caption_html == test_html_string
@@ -489,8 +578,9 @@ class TestMessage:
             r'<a href="http://github.com/abc\)def">links</a>, '
             '<a href="tg://user?id=123456789">text-mention</a> and '
             r'<pre>`\pre</pre>. <a href="http://google.com">http://google.com</a> '
-            'and <i>bold <b>nested in <s>strk</s> nested in</b> italic</i>. '
-            '<pre><code class="python">Python pre</code></pre>.'
+            'and <i>bold <b>nested in <s>strk&gt;trgh</s> nested in</b> italic</i>. '
+            '<pre><code class="python">Python pre</code></pre>. '
+            '<span class="tg-spoiler">Spoiled</span>.'
         )
         caption_html = self.test_message_v2.caption_html_urled
         assert caption_html == test_html_string
@@ -510,8 +600,8 @@ class TestMessage:
             r'__Test__ for <*bold*, _ita\_lic_, `\\\`code`, '
             '[links](http://github.com/abc\\\\\\)def), '
             '[text\\-mention](tg://user?id=123456789) and ```\\`\\\\pre```\\. '
-            r'http://google\.com and _bold *nested in ~strk~ nested in* italic_\. '
-            '```python\nPython pre```\\.'
+            r'http://google\.com and _bold *nested in ~strk\>trgh~ nested in* italic_\. '
+            '```python\nPython pre```\\. ||Spoiled||\\.'
         )
         caption_markdown = self.test_message_v2.caption_markdown_v2
         assert caption_markdown == test_md_string
@@ -537,8 +627,8 @@ class TestMessage:
             r'__Test__ for <*bold*, _ita\_lic_, `\\\`code`, '
             '[links](http://github.com/abc\\\\\\)def), '
             '[text\\-mention](tg://user?id=123456789) and ```\\`\\\\pre```\\. '
-            r'[http://google\.com](http://google.com) and _bold *nested in ~strk~ '
-            'nested in* italic_\\. ```python\nPython pre```\\.'
+            r'[http://google\.com](http://google.com) and _bold *nested in ~strk\>trgh~ '
+            'nested in* italic_\\. ```python\nPython pre```\\. ||Spoiled||\\.'
         )
         caption_markdown = self.test_message_v2.caption_markdown_v2_urled
         assert caption_markdown == test_md_string
@@ -571,6 +661,36 @@ class TestMessage:
         )
         assert expected == message.caption_markdown
 
+    @pytest.mark.parametrize(
+        "type_",
+        argvalues=[
+            "caption_html",
+            "caption_html_urled",
+            "caption_markdown",
+            "caption_markdown_urled",
+            "caption_markdown_v2",
+            "caption_markdown_v2_urled",
+        ],
+    )
+    def test_caption_custom_emoji(self, type_):
+        caption = "Look a custom emoji: 😎"
+        expected = "Look a custom emoji: 😎"
+        emoji_entity = MessageEntity(
+            type=MessageEntity.CUSTOM_EMOJI,
+            offset=21,
+            length=2,
+            custom_emoji_id="5472409228461217725",
+        )
+        message = Message(
+            1,
+            from_user=self.from_user,
+            date=self.date,
+            chat=self.chat,
+            caption=caption,
+            caption_entities=[emoji_entity],
+        )
+        assert expected == message[type_]
+
     def test_parse_entities_url_emoji(self):
         url = b'http://github.com/?unicode=\\u2713\\U0001f469'.decode('unicode-escape')
         text = 'some url'
@@ -584,26 +704,26 @@ class TestMessage:
     def test_chat_id(self, message):
         assert message.chat_id == message.chat.id
 
-    @pytest.mark.parametrize('type', argvalues=[Chat.SUPERGROUP, Chat.CHANNEL])
-    def test_link_with_username(self, message, type):
+    @pytest.mark.parametrize('_type', argvalues=[Chat.SUPERGROUP, Chat.CHANNEL])
+    def test_link_with_username(self, message, _type):
         message.chat.username = 'username'
-        message.chat.type = type
+        message.chat.type = _type
         assert message.link == f'https://t.me/{message.chat.username}/{message.message_id}'
 
     @pytest.mark.parametrize(
-        'type, id', argvalues=[(Chat.CHANNEL, -1003), (Chat.SUPERGROUP, -1003)]
+        '_type, _id', argvalues=[(Chat.CHANNEL, -1003), (Chat.SUPERGROUP, -1003)]
     )
-    def test_link_with_id(self, message, type, id):
+    def test_link_with_id(self, message, _type, _id):
         message.chat.username = None
-        message.chat.id = id
-        message.chat.type = type
+        message.chat.id = _id
+        message.chat.type = _type
         # The leading - for group ids/ -100 for supergroup ids isn't supposed to be in the link
         assert message.link == f'https://t.me/c/{3}/{message.message_id}'
 
-    @pytest.mark.parametrize('id, username', argvalues=[(None, 'username'), (-3, None)])
-    def test_link_private_chats(self, message, id, username):
+    @pytest.mark.parametrize('_id, username', argvalues=[(None, 'username'), (-3, None)])
+    def test_link_private_chats(self, message, _id, username):
         message.chat.type = Chat.PRIVATE
-        message.chat.id = id
+        message.chat.id = _id
         message.chat.username = username
         assert message.link is None
         message.chat.type = Chat.GROUP
@@ -624,7 +744,6 @@ class TestMessage:
             'location',
             'venue',
             'invoice',
-            'invoice',
             'successful_payment',
         ):
             item = getattr(message_params, i, None)
@@ -635,16 +754,22 @@ class TestMessage:
         assert message_params.effective_attachment == item
 
     def test_reply_text(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
-            text = args[1] == 'test'
-            if kwargs.get('reply_to_message_id'):
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
+            text = kwargs['text'] == 'test'
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and text and reply
 
-        monkeypatch.setattr(message.bot, 'send_message', test)
+        assert check_shortcut_signature(
+            Message.reply_text, Bot.send_message, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_text, message.bot, 'send_message')
+        assert check_defaults_handling(message.reply_text, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_message', make_assertion)
         assert message.reply_text('test')
         assert message.reply_text('test', quote=True)
         assert message.reply_text('test', reply_to_message_id=message.message_id, quote=True)
@@ -657,20 +782,26 @@ class TestMessage:
             r'http://google.com/ab\_'
         )
 
-        def test(*args, **kwargs):
-            cid = args[0] == message.chat_id
-            markdown_text = args[1] == test_md_string
+        def make_assertion(*_, **kwargs):
+            cid = kwargs['chat_id'] == message.chat_id
+            markdown_text = kwargs['text'] == test_md_string
             markdown_enabled = kwargs['parse_mode'] == ParseMode.MARKDOWN
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return all([cid, markdown_text, reply, markdown_enabled])
 
+        assert check_shortcut_signature(
+            Message.reply_markdown, Bot.send_message, ['chat_id', 'parse_mode'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_text, message.bot, 'send_message')
+        assert check_defaults_handling(message.reply_text, message.bot)
+
         text_markdown = self.test_message.text_markdown
         assert text_markdown == test_md_string
 
-        monkeypatch.setattr(message.bot, 'send_message', test)
+        monkeypatch.setattr(message.bot, 'send_message', make_assertion)
         assert message.reply_markdown(self.test_message.text_markdown)
         assert message.reply_markdown(self.test_message.text_markdown, quote=True)
         assert message.reply_markdown(
@@ -682,24 +813,30 @@ class TestMessage:
             r'__Test__ for <*bold*, _ita\_lic_, `\\\`code`, '
             '[links](http://github.com/abc\\\\\\)def), '
             '[text\\-mention](tg://user?id=123456789) and ```\\`\\\\pre```\\. '
-            r'http://google\.com and _bold *nested in ~strk~ nested in* italic_\. '
-            '```python\nPython pre```\\.'
+            r'http://google\.com and _bold *nested in ~strk\>trgh~ nested in* italic_\. '
+            '```python\nPython pre```\\. ||Spoiled||\\.'
         )
 
-        def test(*args, **kwargs):
-            cid = args[0] == message.chat_id
-            markdown_text = args[1] == test_md_string
+        def make_assertion(*_, **kwargs):
+            cid = kwargs['chat_id'] == message.chat_id
+            markdown_text = kwargs['text'] == test_md_string
             markdown_enabled = kwargs['parse_mode'] == ParseMode.MARKDOWN_V2
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return all([cid, markdown_text, reply, markdown_enabled])
 
+        assert check_shortcut_signature(
+            Message.reply_markdown_v2, Bot.send_message, ['chat_id', 'parse_mode'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_text, message.bot, 'send_message')
+        assert check_defaults_handling(message.reply_text, message.bot)
+
         text_markdown = self.test_message_v2.text_markdown_v2
         assert text_markdown == test_md_string
 
-        monkeypatch.setattr(message.bot, 'send_message', test)
+        monkeypatch.setattr(message.bot, 'send_message', make_assertion)
         assert message.reply_markdown_v2(self.test_message_v2.text_markdown_v2)
         assert message.reply_markdown_v2(self.test_message_v2.text_markdown_v2, quote=True)
         assert message.reply_markdown_v2(
@@ -715,24 +852,31 @@ class TestMessage:
             r'<a href="http://github.com/abc\)def">links</a>, '
             '<a href="tg://user?id=123456789">text-mention</a> and '
             r'<pre>`\pre</pre>. http://google.com '
-            'and <i>bold <b>nested in <s>strk</s> nested in</b> italic</i>. '
-            '<pre><code class="python">Python pre</code></pre>.'
+            'and <i>bold <b>nested in <s>strk&gt;trgh</s> nested in</b> italic</i>. '
+            '<pre><code class="python">Python pre</code></pre>. '
+            '<span class="tg-spoiler">Spoiled</span>.'
         )
 
-        def test(*args, **kwargs):
-            cid = args[0] == message.chat_id
-            html_text = args[1] == test_html_string
+        def make_assertion(*_, **kwargs):
+            cid = kwargs['chat_id'] == message.chat_id
+            html_text = kwargs['text'] == test_html_string
             html_enabled = kwargs['parse_mode'] == ParseMode.HTML
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return all([cid, html_text, reply, html_enabled])
 
+        assert check_shortcut_signature(
+            Message.reply_html, Bot.send_message, ['chat_id', 'parse_mode'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_text, message.bot, 'send_message')
+        assert check_defaults_handling(message.reply_text, message.bot)
+
         text_html = self.test_message_v2.text_html
         assert text_html == test_html_string
 
-        monkeypatch.setattr(message.bot, 'send_message', test)
+        monkeypatch.setattr(message.bot, 'send_message', make_assertion)
         assert message.reply_html(self.test_message_v2.text_html)
         assert message.reply_html(self.test_message_v2.text_html, quote=True)
         assert message.reply_html(
@@ -740,360 +884,700 @@ class TestMessage:
         )
 
     def test_reply_media_group(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             media = kwargs['media'] == 'reply_media_group'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and media and reply
 
-        monkeypatch.setattr(message.bot, 'send_media_group', test)
+        assert check_shortcut_signature(
+            Message.reply_media_group, Bot.send_media_group, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_media_group, message.bot, 'send_media_group')
+        assert check_defaults_handling(message.reply_media_group, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_media_group', make_assertion)
         assert message.reply_media_group(media='reply_media_group')
         assert message.reply_media_group(media='reply_media_group', quote=True)
 
     def test_reply_photo(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             photo = kwargs['photo'] == 'test_photo'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and photo and reply
 
-        monkeypatch.setattr(message.bot, 'send_photo', test)
+        assert check_shortcut_signature(
+            Message.reply_photo, Bot.send_photo, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_photo, message.bot, 'send_photo')
+        assert check_defaults_handling(message.reply_photo, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_photo', make_assertion)
         assert message.reply_photo(photo='test_photo')
         assert message.reply_photo(photo='test_photo', quote=True)
 
     def test_reply_audio(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             audio = kwargs['audio'] == 'test_audio'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and audio and reply
 
-        monkeypatch.setattr(message.bot, 'send_audio', test)
+        assert check_shortcut_signature(
+            Message.reply_audio, Bot.send_audio, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_audio, message.bot, 'send_audio')
+        assert check_defaults_handling(message.reply_audio, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_audio', make_assertion)
         assert message.reply_audio(audio='test_audio')
         assert message.reply_audio(audio='test_audio', quote=True)
 
     def test_reply_document(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             document = kwargs['document'] == 'test_document'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and document and reply
 
-        monkeypatch.setattr(message.bot, 'send_document', test)
+        assert check_shortcut_signature(
+            Message.reply_document, Bot.send_document, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_document, message.bot, 'send_document')
+        assert check_defaults_handling(message.reply_document, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_document', make_assertion)
         assert message.reply_document(document='test_document')
         assert message.reply_document(document='test_document', quote=True)
 
     def test_reply_animation(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             animation = kwargs['animation'] == 'test_animation'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and animation and reply
 
-        monkeypatch.setattr(message.bot, 'send_animation', test)
+        assert check_shortcut_signature(
+            Message.reply_animation, Bot.send_animation, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_animation, message.bot, 'send_animation')
+        assert check_defaults_handling(message.reply_animation, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_animation', make_assertion)
         assert message.reply_animation(animation='test_animation')
         assert message.reply_animation(animation='test_animation', quote=True)
 
     def test_reply_sticker(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             sticker = kwargs['sticker'] == 'test_sticker'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and sticker and reply
 
-        monkeypatch.setattr(message.bot, 'send_sticker', test)
+        assert check_shortcut_signature(
+            Message.reply_sticker, Bot.send_sticker, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_sticker, message.bot, 'send_sticker')
+        assert check_defaults_handling(message.reply_sticker, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_sticker', make_assertion)
         assert message.reply_sticker(sticker='test_sticker')
         assert message.reply_sticker(sticker='test_sticker', quote=True)
 
     def test_reply_video(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             video = kwargs['video'] == 'test_video'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and video and reply
 
-        monkeypatch.setattr(message.bot, 'send_video', test)
+        assert check_shortcut_signature(
+            Message.reply_video, Bot.send_video, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_video, message.bot, 'send_video')
+        assert check_defaults_handling(message.reply_video, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_video', make_assertion)
         assert message.reply_video(video='test_video')
         assert message.reply_video(video='test_video', quote=True)
 
     def test_reply_video_note(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             video_note = kwargs['video_note'] == 'test_video_note'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and video_note and reply
 
-        monkeypatch.setattr(message.bot, 'send_video_note', test)
+        assert check_shortcut_signature(
+            Message.reply_video_note, Bot.send_video_note, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_video_note, message.bot, 'send_video_note')
+        assert check_defaults_handling(message.reply_video_note, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_video_note', make_assertion)
         assert message.reply_video_note(video_note='test_video_note')
         assert message.reply_video_note(video_note='test_video_note', quote=True)
 
     def test_reply_voice(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             voice = kwargs['voice'] == 'test_voice'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and voice and reply
 
-        monkeypatch.setattr(message.bot, 'send_voice', test)
+        assert check_shortcut_signature(
+            Message.reply_voice, Bot.send_voice, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_voice, message.bot, 'send_voice')
+        assert check_defaults_handling(message.reply_voice, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_voice', make_assertion)
         assert message.reply_voice(voice='test_voice')
         assert message.reply_voice(voice='test_voice', quote=True)
 
     def test_reply_location(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             location = kwargs['location'] == 'test_location'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and location and reply
 
-        monkeypatch.setattr(message.bot, 'send_location', test)
+        assert check_shortcut_signature(
+            Message.reply_location, Bot.send_location, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_location, message.bot, 'send_location')
+        assert check_defaults_handling(message.reply_location, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_location', make_assertion)
         assert message.reply_location(location='test_location')
         assert message.reply_location(location='test_location', quote=True)
 
     def test_reply_venue(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             venue = kwargs['venue'] == 'test_venue'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and venue and reply
 
-        monkeypatch.setattr(message.bot, 'send_venue', test)
+        assert check_shortcut_signature(
+            Message.reply_venue, Bot.send_venue, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_venue, message.bot, 'send_venue')
+        assert check_defaults_handling(message.reply_venue, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_venue', make_assertion)
         assert message.reply_venue(venue='test_venue')
         assert message.reply_venue(venue='test_venue', quote=True)
 
     def test_reply_contact(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             contact = kwargs['contact'] == 'test_contact'
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and contact and reply
 
-        monkeypatch.setattr(message.bot, 'send_contact', test)
+        assert check_shortcut_signature(
+            Message.reply_contact, Bot.send_contact, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_contact, message.bot, 'send_contact')
+        assert check_defaults_handling(message.reply_contact, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_contact', make_assertion)
         assert message.reply_contact(contact='test_contact')
         assert message.reply_contact(contact='test_contact', quote=True)
 
     def test_reply_poll(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
-            contact = kwargs['question'] == 'test_poll'
-            if kwargs.get('reply_to_message_id'):
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
+            question = kwargs['question'] == 'test_poll'
+            options = kwargs['options'] == ['1', '2', '3']
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
-            return id_ and contact and reply
+            return id_ and question and options and reply
 
-        monkeypatch.setattr(message.bot, 'send_poll', test)
-        assert message.reply_poll(question='test_poll')
-        assert message.reply_poll(question='test_poll', quote=True)
+        assert check_shortcut_signature(Message.reply_poll, Bot.send_poll, ['chat_id'], ['quote'])
+        assert check_shortcut_call(message.reply_poll, message.bot, 'send_poll')
+        assert check_defaults_handling(message.reply_poll, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_poll', make_assertion)
+        assert message.reply_poll(question='test_poll', options=['1', '2', '3'])
+        assert message.reply_poll(question='test_poll', quote=True, options=['1', '2', '3'])
 
     def test_reply_dice(self, monkeypatch, message):
-        def test(*args, **kwargs):
-            id_ = args[0] == message.chat_id
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
             contact = kwargs['disable_notification'] is True
-            if kwargs.get('reply_to_message_id'):
+            if kwargs.get('reply_to_message_id') is not None:
                 reply = kwargs['reply_to_message_id'] == message.message_id
             else:
                 reply = True
             return id_ and contact and reply
 
-        monkeypatch.setattr(message.bot, 'send_dice', test)
+        assert check_shortcut_signature(Message.reply_dice, Bot.send_dice, ['chat_id'], ['quote'])
+        assert check_shortcut_call(message.reply_dice, message.bot, 'send_dice')
+        assert check_defaults_handling(message.reply_dice, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_dice', make_assertion)
         assert message.reply_dice(disable_notification=True)
         assert message.reply_dice(disable_notification=True, quote=True)
 
-    def test_forward(self, monkeypatch, message):
-        def test(*args, **kwargs):
+    def test_reply_action(self, monkeypatch, message: Message):
+        def make_assertion(*_, **kwargs):
+            id_ = kwargs['chat_id'] == message.chat_id
+            action = kwargs['action'] == ChatAction.TYPING
+            return id_ and action
+
+        assert check_shortcut_signature(
+            Message.reply_chat_action, Bot.send_chat_action, ['chat_id'], []
+        )
+        assert check_shortcut_call(message.reply_chat_action, message.bot, 'send_chat_action')
+        assert check_defaults_handling(message.reply_chat_action, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_chat_action', make_assertion)
+        assert message.reply_chat_action(action=ChatAction.TYPING)
+
+    def test_reply_game(self, monkeypatch, message: Message):
+        def make_assertion(*_, **kwargs):
+            return (
+                kwargs['chat_id'] == message.chat_id and kwargs['game_short_name'] == 'test_game'
+            )
+
+        assert check_shortcut_signature(Message.reply_game, Bot.send_game, ['chat_id'], ['quote'])
+        assert check_shortcut_call(message.reply_game, message.bot, 'send_game')
+        assert check_defaults_handling(message.reply_game, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_game', make_assertion)
+        assert message.reply_game(game_short_name='test_game')
+        assert message.reply_game(game_short_name='test_game', quote=True)
+
+    def test_reply_invoice(self, monkeypatch, message: Message):
+        def make_assertion(*_, **kwargs):
+            title = kwargs['title'] == 'title'
+            description = kwargs['description'] == 'description'
+            payload = kwargs['payload'] == 'payload'
+            provider_token = kwargs['provider_token'] == 'provider_token'
+            currency = kwargs['currency'] == 'currency'
+            prices = kwargs['prices'] == 'prices'
+            args = title and description and payload and provider_token and currency and prices
+            return kwargs['chat_id'] == message.chat_id and args
+
+        assert check_shortcut_signature(
+            Message.reply_invoice, Bot.send_invoice, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.reply_invoice, message.bot, 'send_invoice')
+        assert check_defaults_handling(message.reply_invoice, message.bot)
+
+        monkeypatch.setattr(message.bot, 'send_invoice', make_assertion)
+        assert message.reply_invoice(
+            'title',
+            'description',
+            'payload',
+            'provider_token',
+            'currency',
+            'prices',
+        )
+        assert message.reply_invoice(
+            'title',
+            'description',
+            'payload',
+            'provider_token',
+            'currency',
+            'prices',
+            quote=True,
+        )
+
+    @pytest.mark.parametrize('disable_notification,protected', [(False, True), (True, False)])
+    def test_forward(self, monkeypatch, message, disable_notification, protected):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == 123456
             from_chat = kwargs['from_chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
-            if kwargs.get('disable_notification'):
-                notification = kwargs['disable_notification'] is True
-            else:
-                notification = True
-            return chat_id and from_chat and message_id and notification
+            notification = kwargs['disable_notification'] == disable_notification
+            protected_cont = kwargs['protect_content'] == protected
+            return chat_id and from_chat and message_id and notification and protected_cont
 
-        monkeypatch.setattr(message.bot, 'forward_message', test)
-        assert message.forward(123456)
-        assert message.forward(123456, disable_notification=True)
+        assert check_shortcut_signature(
+            Message.forward, Bot.forward_message, ['from_chat_id', 'message_id'], []
+        )
+        assert check_shortcut_call(message.forward, message.bot, 'forward_message')
+        assert check_defaults_handling(message.forward, message.bot)
+
+        monkeypatch.setattr(message.bot, 'forward_message', make_assertion)
+        assert message.forward(
+            123456, disable_notification=disable_notification, protect_content=protected
+        )
         assert not message.forward(635241)
 
-    def test_copy(self, monkeypatch, message):
+    @pytest.mark.parametrize('disable_notification,protected', [(True, False), (False, True)])
+    def test_copy(self, monkeypatch, message, disable_notification, protected):
         keyboard = [[1, 2]]
 
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == 123456
             from_chat = kwargs['from_chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
-            if kwargs.get('disable_notification'):
-                notification = kwargs['disable_notification'] is True
-            else:
-                notification = True
-            if kwargs.get('reply_markup'):
+            notification = kwargs['disable_notification'] == disable_notification
+            protected_cont = kwargs['protect_content'] == protected
+            if kwargs.get('reply_markup') is not None:
                 reply_markup = kwargs['reply_markup'] is keyboard
             else:
                 reply_markup = True
-            return chat_id and from_chat and message_id and notification and reply_markup
+            return (
+                chat_id
+                and from_chat
+                and message_id
+                and notification
+                and reply_markup
+                and protected_cont
+            )
 
-        monkeypatch.setattr(message.bot, 'copy_message', test)
-        assert message.copy(123456)
-        assert message.copy(123456, disable_notification=True)
-        assert message.copy(123456, reply_markup=keyboard)
+        assert check_shortcut_signature(
+            Message.copy, Bot.copy_message, ['from_chat_id', 'message_id'], []
+        )
+        assert check_shortcut_call(message.copy, message.bot, 'copy_message')
+        assert check_defaults_handling(message.copy, message.bot)
+
+        monkeypatch.setattr(message.bot, 'copy_message', make_assertion)
+        assert message.copy(
+            123456, disable_notification=disable_notification, protect_content=protected
+        )
+        assert message.copy(
+            123456,
+            reply_markup=keyboard,
+            disable_notification=disable_notification,
+            protect_content=protected,
+        )
         assert not message.copy(635241)
 
-    @pytest.mark.pfff
-    def test_reply_copy(self, monkeypatch, message):
+    @pytest.mark.parametrize('disable_notification,protected', [(True, False), (False, True)])
+    def test_reply_copy(self, monkeypatch, message, disable_notification, protected):
         keyboard = [[1, 2]]
 
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['from_chat_id'] == 123456
             from_chat = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == 456789
-            if kwargs.get('disable_notification'):
-                notification = kwargs['disable_notification'] is True
-            else:
-                notification = True
-            if kwargs.get('reply_markup'):
+            notification = kwargs['disable_notification'] == disable_notification
+            is_protected = kwargs['protect_content'] == protected
+            if kwargs.get('reply_markup') is not None:
                 reply_markup = kwargs['reply_markup'] is keyboard
             else:
                 reply_markup = True
-            return chat_id and from_chat and message_id and notification and reply_markup
+            if kwargs.get('reply_to_message_id') is not None:
+                reply = kwargs['reply_to_message_id'] == message.message_id
+            else:
+                reply = True
+            return (
+                chat_id
+                and from_chat
+                and message_id
+                and notification
+                and reply_markup
+                and reply
+                and is_protected
+            )
 
-        monkeypatch.setattr(message.bot, 'copy_message', test)
-        assert message.reply_copy(123456, 456789)
-        assert message.reply_copy(123456, 456789, disable_notification=True)
-        assert message.reply_copy(123456, 456789, reply_markup=keyboard)
+        assert check_shortcut_signature(
+            Message.reply_copy, Bot.copy_message, ['chat_id'], ['quote']
+        )
+        assert check_shortcut_call(message.copy, message.bot, 'copy_message')
+        assert check_defaults_handling(message.copy, message.bot)
+
+        monkeypatch.setattr(message.bot, 'copy_message', make_assertion)
+        assert message.reply_copy(
+            123456, 456789, disable_notification=disable_notification, protect_content=protected
+        )
+        assert message.reply_copy(
+            123456,
+            456789,
+            reply_markup=keyboard,
+            disable_notification=disable_notification,
+            protect_content=protected,
+        )
+        assert message.reply_copy(
+            123456,
+            456789,
+            quote=True,
+            disable_notification=disable_notification,
+            protect_content=protected,
+        )
+        assert message.reply_copy(
+            123456,
+            456789,
+            quote=True,
+            reply_to_message_id=message.message_id,
+            disable_notification=disable_notification,
+            protect_content=protected,
+        )
 
     def test_edit_text(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             text = kwargs['text'] == 'test'
             return chat_id and message_id and text
 
-        monkeypatch.setattr(message.bot, 'edit_message_text', test)
+        assert check_shortcut_signature(
+            Message.edit_text,
+            Bot.edit_message_text,
+            ['chat_id', 'message_id', 'inline_message_id'],
+            [],
+        )
+        assert check_shortcut_call(
+            message.edit_text,
+            message.bot,
+            'edit_message_text',
+            skip_params=['inline_message_id'],
+            shortcut_kwargs=['message_id', 'chat_id'],
+        )
+        assert check_defaults_handling(message.edit_text, message.bot)
+
+        monkeypatch.setattr(message.bot, 'edit_message_text', make_assertion)
         assert message.edit_text(text='test')
 
     def test_edit_caption(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             caption = kwargs['caption'] == 'new caption'
             return chat_id and message_id and caption
 
-        monkeypatch.setattr(message.bot, 'edit_message_caption', test)
+        assert check_shortcut_signature(
+            Message.edit_caption,
+            Bot.edit_message_caption,
+            ['chat_id', 'message_id', 'inline_message_id'],
+            [],
+        )
+        assert check_shortcut_call(
+            message.edit_caption,
+            message.bot,
+            'edit_message_caption',
+            skip_params=['inline_message_id'],
+            shortcut_kwargs=['message_id', 'chat_id'],
+        )
+        assert check_defaults_handling(message.edit_caption, message.bot)
+
+        monkeypatch.setattr(message.bot, 'edit_message_caption', make_assertion)
         assert message.edit_caption(caption='new caption')
 
     def test_edit_media(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             media = kwargs['media'] == 'my_media'
             return chat_id and message_id and media
 
-        monkeypatch.setattr(message.bot, 'edit_message_media', test)
+        assert check_shortcut_signature(
+            Message.edit_media,
+            Bot.edit_message_media,
+            ['chat_id', 'message_id', 'inline_message_id'],
+            [],
+        )
+        assert check_shortcut_call(
+            message.edit_media,
+            message.bot,
+            'edit_message_media',
+            skip_params=['inline_message_id'],
+            shortcut_kwargs=['message_id', 'chat_id'],
+        )
+        assert check_defaults_handling(message.edit_media, message.bot)
+
+        monkeypatch.setattr(message.bot, 'edit_message_media', make_assertion)
         assert message.edit_media('my_media')
 
     def test_edit_reply_markup(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             reply_markup = kwargs['reply_markup'] == [['1', '2']]
             return chat_id and message_id and reply_markup
 
-        monkeypatch.setattr(message.bot, 'edit_message_reply_markup', test)
+        assert check_shortcut_signature(
+            Message.edit_reply_markup,
+            Bot.edit_message_reply_markup,
+            ['chat_id', 'message_id', 'inline_message_id'],
+            [],
+        )
+        assert check_shortcut_call(
+            message.edit_reply_markup,
+            message.bot,
+            'edit_message_reply_markup',
+            skip_params=['inline_message_id'],
+            shortcut_kwargs=['message_id', 'chat_id'],
+        )
+        assert check_defaults_handling(message.edit_reply_markup, message.bot)
+
+        monkeypatch.setattr(message.bot, 'edit_message_reply_markup', make_assertion)
         assert message.edit_reply_markup(reply_markup=[['1', '2']])
 
     def test_edit_live_location(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             latitude = kwargs['latitude'] == 1
             longitude = kwargs['longitude'] == 2
             return chat_id and message_id and longitude and latitude
 
-        monkeypatch.setattr(message.bot, 'edit_message_live_location', test)
+        assert check_shortcut_signature(
+            Message.edit_live_location,
+            Bot.edit_message_live_location,
+            ['chat_id', 'message_id', 'inline_message_id'],
+            [],
+        )
+        assert check_shortcut_call(
+            message.edit_live_location,
+            message.bot,
+            'edit_message_live_location',
+            skip_params=['inline_message_id'],
+            shortcut_kwargs=['message_id', 'chat_id'],
+        )
+        assert check_defaults_handling(message.edit_live_location, message.bot)
+
+        monkeypatch.setattr(message.bot, 'edit_message_live_location', make_assertion)
         assert message.edit_live_location(latitude=1, longitude=2)
 
     def test_stop_live_location(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             return chat_id and message_id
 
-        monkeypatch.setattr(message.bot, 'stop_message_live_location', test)
+        assert check_shortcut_signature(
+            Message.stop_live_location,
+            Bot.stop_message_live_location,
+            ['chat_id', 'message_id', 'inline_message_id'],
+            [],
+        )
+        assert check_shortcut_call(
+            message.stop_live_location,
+            message.bot,
+            'stop_message_live_location',
+            skip_params=['inline_message_id'],
+            shortcut_kwargs=['message_id', 'chat_id'],
+        )
+        assert check_defaults_handling(message.stop_live_location, message.bot)
+
+        monkeypatch.setattr(message.bot, 'stop_message_live_location', make_assertion)
         assert message.stop_live_location()
 
     def test_set_game_score(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             user_id = kwargs['user_id'] == 1
             score = kwargs['score'] == 2
             return chat_id and message_id and user_id and score
 
-        monkeypatch.setattr(message.bot, 'set_game_score', test)
+        assert check_shortcut_signature(
+            Message.set_game_score,
+            Bot.set_game_score,
+            ['chat_id', 'message_id', 'inline_message_id'],
+            [],
+        )
+        assert check_shortcut_call(
+            message.set_game_score,
+            message.bot,
+            'set_game_score',
+            skip_params=['inline_message_id'],
+            shortcut_kwargs=['message_id', 'chat_id'],
+        )
+        assert check_defaults_handling(message.set_game_score, message.bot)
+
+        monkeypatch.setattr(message.bot, 'set_game_score', make_assertion)
         assert message.set_game_score(user_id=1, score=2)
 
     def test_get_game_high_scores(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             user_id = kwargs['user_id'] == 1
             return chat_id and message_id and user_id
 
-        monkeypatch.setattr(message.bot, 'get_game_high_scores', test)
-        assert message.get_game_high_scores(user_id=1, score=2)
+        assert check_shortcut_signature(
+            Message.get_game_high_scores,
+            Bot.get_game_high_scores,
+            ['chat_id', 'message_id', 'inline_message_id'],
+            [],
+        )
+        assert check_shortcut_call(
+            message.get_game_high_scores,
+            message.bot,
+            'get_game_high_scores',
+            skip_params=['inline_message_id'],
+            shortcut_kwargs=['message_id', 'chat_id'],
+        )
+        assert check_defaults_handling(message.get_game_high_scores, message.bot)
+
+        monkeypatch.setattr(message.bot, 'get_game_high_scores', make_assertion)
+        assert message.get_game_high_scores(user_id=1)
 
     def test_delete(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             return chat_id and message_id
 
-        monkeypatch.setattr(message.bot, 'delete_message', test)
+        assert check_shortcut_signature(
+            Message.delete, Bot.delete_message, ['chat_id', 'message_id'], []
+        )
+        assert check_shortcut_call(message.delete, message.bot, 'delete_message')
+        assert check_defaults_handling(message.delete, message.bot)
+
+        monkeypatch.setattr(message.bot, 'delete_message', make_assertion)
         assert message.delete()
 
     def test_stop_poll(self, monkeypatch, message):
-        def test(*args, **kwargs):
+        def make_assertion(*_, **kwargs):
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             return chat_id and message_id
 
-        monkeypatch.setattr(message.bot, 'stop_poll', test)
+        assert check_shortcut_signature(
+            Message.stop_poll, Bot.stop_poll, ['chat_id', 'message_id'], []
+        )
+        assert check_shortcut_call(message.stop_poll, message.bot, 'stop_poll')
+        assert check_defaults_handling(message.stop_poll, message.bot)
+
+        monkeypatch.setattr(message.bot, 'stop_poll', make_assertion)
         assert message.stop_poll()
 
     def test_pin(self, monkeypatch, message):
@@ -1101,6 +1585,12 @@ class TestMessage:
             chat_id = kwargs['chat_id'] == message.chat_id
             message_id = kwargs['message_id'] == message.message_id
             return chat_id and message_id
+
+        assert check_shortcut_signature(
+            Message.pin, Bot.pin_chat_message, ['chat_id', 'message_id'], []
+        )
+        assert check_shortcut_call(message.pin, message.bot, 'pin_chat_message')
+        assert check_defaults_handling(message.pin, message.bot)
 
         monkeypatch.setattr(message.bot, 'pin_chat_message', make_assertion)
         assert message.pin()
@@ -1111,30 +1601,38 @@ class TestMessage:
             message_id = kwargs['message_id'] == message.message_id
             return chat_id and message_id
 
+        assert check_shortcut_signature(
+            Message.unpin, Bot.unpin_chat_message, ['chat_id', 'message_id'], []
+        )
+        assert check_shortcut_call(
+            message.unpin,
+            message.bot,
+            'unpin_chat_message',
+            shortcut_kwargs=['chat_id', 'message_id'],
+        )
+        assert check_defaults_handling(message.unpin, message.bot)
+
         monkeypatch.setattr(message.bot, 'unpin_chat_message', make_assertion)
         assert message.unpin()
 
     def test_default_quote(self, message):
         message.bot.defaults = Defaults()
-        kwargs = {}
 
-        message.bot.defaults._quote = False
-        message._quote(kwargs)
-        assert 'reply_to_message_id' not in kwargs
+        try:
+            message.bot.defaults._quote = False
+            assert message._quote(None, None) is None
 
-        message.bot.defaults._quote = True
-        message._quote(kwargs)
-        assert 'reply_to_message_id' in kwargs
+            message.bot.defaults._quote = True
+            assert message._quote(None, None) == message.message_id
 
-        kwargs = {}
-        message.bot.defaults._quote = None
-        message.chat.type = Chat.PRIVATE
-        message._quote(kwargs)
-        assert 'reply_to_message_id' not in kwargs
+            message.bot.defaults._quote = None
+            message.chat.type = Chat.PRIVATE
+            assert message._quote(None, None) is None
 
-        message.chat.type = Chat.GROUP
-        message._quote(kwargs)
-        assert 'reply_to_message_id' in kwargs
+            message.chat.type = Chat.GROUP
+            assert message._quote(None, None)
+        finally:
+            message.bot.defaults = None
 
     def test_equality(self):
         id_ = 1
@@ -1166,3 +1664,36 @@ class TestMessage:
 
         assert a != e
         assert hash(a) != hash(e)
+
+    def test_invalid_input(
+        self,
+    ):
+        with pytest.raises(ValueError):
+            Message(
+                self.id_,
+                self.date,
+                self.chat,
+                from_user=self.from_user,
+                voice_chat_scheduled=True,
+                video_chat_scheduled=False,
+            )
+
+        with pytest.raises(ValueError):
+            Message(
+                self.id_,
+                self.date,
+                self.chat,
+                from_user=self.from_user,
+                voice_chat_ended=True,
+                video_chat_ended=False,
+            )
+
+        with pytest.raises(ValueError):
+            Message(
+                self.id_,
+                self.date,
+                self.chat,
+                from_user=self.from_user,
+                voice_chat_participants_invited=True,
+                video_chat_participants_invited=False,
+            )
