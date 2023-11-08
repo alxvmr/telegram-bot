@@ -44,6 +44,8 @@ from telegram import (
     ChosenInlineResult,
     File,
     ChatPermissions,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
 )
 from telegram.ext import (
     Dispatcher,
@@ -134,6 +136,11 @@ def chat_id(bot_info):
 @pytest.fixture(scope='session')
 def super_group_id(bot_info):
     return bot_info['super_group_id']
+
+
+@pytest.fixture(scope="session")
+def forum_group_id(bot_info):
+    return int(bot_info["forum_group_id"])
 
 
 @pytest.fixture(scope='session')
@@ -547,6 +554,12 @@ def check_defaults_handling(
                 # Some special casing
                 if name == 'permissions':
                     kws[name] = ChatPermissions()
+                elif name == 'result':
+                    kws[name] = InlineQueryResultArticle(
+                        id='id',
+                        title='title',
+                        input_message_content=InputTextMessageContent('content'),
+                    )
                 elif name in ['prices', 'media', 'results', 'commands', 'errors']:
                     kws[name] = []
                 elif name == 'ok':

@@ -769,7 +769,14 @@ class TestBot:
             nonlocal params
             params = data == {
                 'web_app_query_id': '12345',
-                'result': result,
+                'result': {
+                    "title": "title",
+                    "input_message_content": {
+                        "message_text": "text",
+                    },
+                    "type": "article",
+                    "id": "1",
+                },
             }
             web_app_msg = SentWebAppMessage('321').to_dict()
             return web_app_msg
@@ -824,6 +831,96 @@ class TestBot:
             switch_pm_parameter='start_pm',
         )
         monkeypatch.delattr(bot.request, 'post')
+
+    @pytest.mark.parametrize(
+        "default_bot",
+        [{"parse_mode": "Markdown", "disable_web_page_preview": True}],
+        indirect=True,
+    )
+    @pytest.mark.parametrize(
+        "ilq_result,expected_params",
+        [
+            (
+                InlineQueryResultArticle("1", "title", InputTextMessageContent("text")),
+                {
+                    "web_app_query_id": "12345",
+                    "result": {
+                        "title": "title",
+                        "input_message_content": {
+                            "message_text": "text",
+                            "parse_mode": "Markdown",
+                            "disable_web_page_preview": True,
+                        },
+                        "type": "article",
+                        "id": "1",
+                    },
+                },
+            ),
+            (
+                InlineQueryResultArticle(
+                    "1",
+                    "title",
+                    InputTextMessageContent(
+                        "text", parse_mode="HTML", disable_web_page_preview=False
+                    ),
+                ),
+                {
+                    "web_app_query_id": "12345",
+                    "result": {
+                        "title": "title",
+                        "input_message_content": {
+                            "message_text": "text",
+                            "parse_mode": "HTML",
+                            "disable_web_page_preview": False,
+                        },
+                        "type": "article",
+                        "id": "1",
+                    },
+                },
+            ),
+            (
+                InlineQueryResultArticle(
+                    "1",
+                    "title",
+                    InputTextMessageContent(
+                        "text", parse_mode=None, disable_web_page_preview="False"
+                    ),
+                ),
+                {
+                    "web_app_query_id": "12345",
+                    "result": {
+                        "title": "title",
+                        "input_message_content": {
+                            "message_text": "text",
+                            "disable_web_page_preview": "False",
+                        },
+                        "type": "article",
+                        "id": "1",
+                    },
+                },
+            ),
+        ],
+    )
+    def test_answer_web_app_query_defaults(
+        self, default_bot, ilq_result, expected_params, monkeypatch
+    ):
+        bot = default_bot
+        params = False
+
+        # For now just test that our internals pass the correct data
+
+        def make_assertion(url, data, *args, **kwargs):
+            nonlocal params
+            params = data == expected_params
+            web_app_msg = SentWebAppMessage("321").to_dict()
+            return web_app_msg
+
+        monkeypatch.setattr(bot.request, "post", make_assertion)
+
+        web_app_msg = bot.answer_web_app_query("12345", ilq_result)
+        assert params, "something went wrong with passing arguments to the request"
+        assert isinstance(web_app_msg, SentWebAppMessage)
+        assert web_app_msg.inline_message_id == "321"
 
     def test_answer_inline_query_no_default_parse_mode(self, monkeypatch, bot):
         def test(url, data, *args, **kwargs):
@@ -1754,6 +1851,7 @@ class TestBot:
                 can_promote_members=True,
                 can_manage_chat=True,
                 can_manage_voice_chats=True,
+                can_manage_topics=True,
             )
 
         with pytest.raises(
@@ -1795,6 +1893,7 @@ class TestBot:
                 and data.get('can_promote_members') == 9
                 and data.get('can_manage_chat') == 10
                 and data.get('can_manage_video_chats') == 11
+                and data.get("can_manage_topics") == 12
             )
 
         monkeypatch.setattr(bot, '_post', make_assertion)
@@ -1812,6 +1911,7 @@ class TestBot:
             can_promote_members=9,
             can_manage_chat=10,
             can_manage_voice_chats=11,
+            can_manage_topics=12,
         )
 
         # Test that video_chats also works
@@ -2075,6 +2175,9 @@ class TestBot:
     # set_sticker_position_in_set, delete_sticker_from_set and get_custom_emoji_stickers
     # are tested in the test_sticker module.
 
+    # get_forum_topic_icon_stickers, edit_forum_topic, etc...
+    # are tested in the test_forum module.
+
     def test_timeout_propagation_explicit(self, monkeypatch, bot, chat_id):
 
         from telegram.vendor.ptb_urllib3.urllib3.util.timeout import Timeout
@@ -2210,6 +2313,7 @@ class TestBot:
         assert my_admin_rights_ch.can_promote_members is my_rights.can_promote_members
         assert my_admin_rights_ch.can_restrict_members is my_rights.can_restrict_members
         assert my_admin_rights_ch.can_pin_messages is None  # Not returned for channels
+        assert my_admin_rights_ch.can_manage_topics is None  # Not returned for channels
 
     def test_get_set_chat_menu_button(self, bot, chat_id):
         # Test our chat menu button is commands-
@@ -2343,6 +2447,7 @@ class TestBot:
             assert data["disable_notification"] is True
             assert data["caption_entities"] == [MessageEntity(MessageEntity.BOLD, 0, 4)]
             assert data['protect_content'] is True
+            assert data["message_thread_id"] == 1
             return data
 
         monkeypatch.setattr(bot.request, 'post', post)
@@ -2357,6 +2462,7 @@ class TestBot:
             reply_markup=keyboard.to_json() if json_keyboard else keyboard,
             disable_notification=True,
             protect_content=True,
+            message_thread_id=1,
         )
 
     @flaky(3, 1)
