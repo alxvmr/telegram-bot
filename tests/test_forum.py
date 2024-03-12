@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2022
+# Copyright (C) 2015-2023
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -16,9 +16,23 @@
 #
 # You should have received a copy of the GNU Lesser Public License
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
+import asyncio
+import datetime
+
 import pytest
 
-from telegram import ForumTopic, ForumTopicClosed, ForumTopicCreated, ForumTopicReopened, Sticker
+from telegram import (
+    ForumTopic,
+    ForumTopicClosed,
+    ForumTopicCreated,
+    ForumTopicEdited,
+    ForumTopicReopened,
+    GeneralForumTopicHidden,
+    GeneralForumTopicUnhidden,
+    Sticker,
+)
+from telegram.error import BadRequest
+from tests.auxil.slots import mro_slots
 
 TEST_MSG_TEXT = "Topics are forever"
 TEST_TOPIC_ICON_COLOR = 0x6FB9F0
@@ -26,14 +40,14 @@ TEST_TOPIC_NAME = "Sad bot true: real stories"
 
 
 @pytest.fixture(scope="module")
-def emoji_id(bot):
-    emoji_sticker_list = bot.get_forum_topic_icon_stickers()
+async def emoji_id(bot):
+    emoji_sticker_list = await bot.get_forum_topic_icon_stickers()
     first_sticker = emoji_sticker_list[0]
     return first_sticker.custom_emoji_id
 
 
-@pytest.fixture
-def forum_topic_object(forum_group_id, emoji_id):
+@pytest.fixture(scope="module")
+async def forum_topic_object(forum_group_id, emoji_id):
     return ForumTopic(
         message_thread_id=forum_group_id,
         name=TEST_TOPIC_NAME,
@@ -42,9 +56,9 @@ def forum_topic_object(forum_group_id, emoji_id):
     )
 
 
-@pytest.fixture
-def real_topic(bot, emoji_id, forum_group_id):
-    result = bot.create_forum_topic(
+@pytest.fixture()
+async def real_topic(bot, emoji_id, forum_group_id):
+    result = await bot.create_forum_topic(
         chat_id=forum_group_id,
         name=TEST_TOPIC_NAME,
         icon_color=TEST_TOPIC_ICON_COLOR,
@@ -53,21 +67,20 @@ def real_topic(bot, emoji_id, forum_group_id):
 
     yield result
 
-    result = bot.delete_forum_topic(
+    result = await bot.delete_forum_topic(
         chat_id=forum_group_id, message_thread_id=result.message_thread_id
     )
     assert result is True, "Topic was not deleted"
 
 
-class TestForumTopic:
-    def test_slot_behaviour(self, mro_slots, forum_topic_object):
-        for attr in forum_topic_object.__slots__:
-            assert getattr(forum_topic_object, attr, "err") != "err", f"got extra slot '{attr}'"
-        assert len(mro_slots(forum_topic_object)) == len(
-            set(mro_slots(forum_topic_object))
-        ), "duplicate slot"
+class TestForumTopicWithoutRequest:
+    def test_slot_behaviour(self, forum_topic_object):
+        inst = forum_topic_object
+        for attr in inst.__slots__:
+            assert getattr(inst, attr, "err") != "err", f"got extra slot '{attr}'"
+        assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
 
-    def test_expected_values(self, emoji_id, forum_group_id, forum_topic_object):
+    async def test_expected_values(self, emoji_id, forum_group_id, forum_topic_object):
         assert forum_topic_object.message_thread_id == forum_group_id
         assert forum_topic_object.icon_color == TEST_TOPIC_ICON_COLOR
         assert forum_topic_object.name == TEST_TOPIC_NAME
@@ -83,6 +96,7 @@ class TestForumTopic:
             "icon_custom_emoji_id": emoji_id,
         }
         topic = ForumTopic.de_json(json_dict, bot)
+        assert topic.api_kwargs == {}
 
         assert topic.message_thread_id == forum_group_id
         assert topic.icon_color == TEST_TOPIC_ICON_COLOR
@@ -138,8 +152,9 @@ class TestForumTopic:
         assert a != e
         assert hash(a) != hash(e)
 
-    @pytest.mark.flaky(3, 1)
-    def test_create_forum_topic(self, real_topic):
+
+class TestForumMethodsWithRequest:
+    async def test_create_forum_topic(self, real_topic):
         result = real_topic
         assert isinstance(result, ForumTopic)
         assert result.name == TEST_TOPIC_NAME
@@ -147,22 +162,21 @@ class TestForumTopic:
         assert isinstance(result.icon_color, int)
         assert isinstance(result.icon_custom_emoji_id, str)
 
-    def test_create_forum_topic_with_only_required_args(self, bot, forum_group_id):
-        result = bot.create_forum_topic(chat_id=forum_group_id, name=TEST_TOPIC_NAME)
+    async def test_create_forum_topic_with_only_required_args(self, bot, forum_group_id):
+        result = await bot.create_forum_topic(chat_id=forum_group_id, name=TEST_TOPIC_NAME)
         assert isinstance(result, ForumTopic)
         assert result.name == TEST_TOPIC_NAME
         assert result.message_thread_id
         assert isinstance(result.icon_color, int)  # color is still there though it was not passed
         assert result.icon_custom_emoji_id is None
 
-        result = bot.delete_forum_topic(
+        result = await bot.delete_forum_topic(
             chat_id=forum_group_id, message_thread_id=result.message_thread_id
         )
         assert result is True, "Failed to delete forum topic"
 
-    @pytest.mark.flaky(3, 1)
-    def test_get_forum_topic_icon_stickers(self, bot):
-        emoji_sticker_list = bot.get_forum_topic_icon_stickers()
+    async def test_get_forum_topic_icon_stickers(self, bot):
+        emoji_sticker_list = await bot.get_forum_topic_icon_stickers()
         first_sticker = emoji_sticker_list[0]
 
         assert first_sticker.emoji == "📰"
@@ -172,19 +186,19 @@ class TestForumTopic:
         assert not first_sticker.is_video
         assert first_sticker.set_name == "Topics"
         assert first_sticker.type == Sticker.CUSTOM_EMOJI
-        assert first_sticker.thumb.width == 128
-        assert first_sticker.thumb.height == 128
+        assert first_sticker.thumbnail.width == 128
+        assert first_sticker.thumbnail.height == 128
 
         # The following data of first item returned has changed in the past already,
         # so check sizes loosely and ID's only by length of string
-        assert first_sticker.thumb.file_size in range(2000, 7000)
+        assert first_sticker.thumbnail.file_size in range(2000, 7000)
         assert first_sticker.file_size in range(20000, 70000)
         assert len(first_sticker.custom_emoji_id) == 19
-        assert len(first_sticker.thumb.file_unique_id) == 16
+        assert len(first_sticker.thumbnail.file_unique_id) == 16
         assert len(first_sticker.file_unique_id) == 15
 
-    def test_edit_forum_topic(self, emoji_id, forum_group_id, bot, real_topic):
-        result = bot.edit_forum_topic(
+    async def test_edit_forum_topic(self, emoji_id, forum_group_id, bot, real_topic):
+        result = await bot.edit_forum_topic(
             chat_id=forum_group_id,
             message_thread_id=real_topic.message_thread_id,
             name=f"{TEST_TOPIC_NAME}_EDITED",
@@ -193,11 +207,10 @@ class TestForumTopic:
         assert result is True, "Failed to edit forum topic"
         # no way of checking the edited name, just the boolean result
 
-    @pytest.mark.flaky(3, 1)
-    def test_send_message_to_topic(self, bot, forum_group_id, real_topic):
+    async def test_send_message_to_topic(self, bot, forum_group_id, real_topic):
         message_thread_id = real_topic.message_thread_id
 
-        message = bot.send_message(
+        message = await bot.send_message(
             chat_id=forum_group_id, text=TEST_MSG_TEXT, message_thread_id=message_thread_id
         )
 
@@ -205,10 +218,10 @@ class TestForumTopic:
         assert message.is_topic_message is True
         assert message.message_thread_id == message_thread_id
 
-    def test_close_and_reopen_forum_topic(self, bot, forum_group_id, real_topic):
+    async def test_close_and_reopen_forum_topic(self, bot, forum_group_id, real_topic):
         message_thread_id = real_topic.message_thread_id
 
-        result = bot.close_forum_topic(
+        result = await bot.close_forum_topic(
             chat_id=forum_group_id,
             message_thread_id=message_thread_id,
         )
@@ -216,41 +229,100 @@ class TestForumTopic:
         # bot will still be able to send a message to a closed topic, so can't test anything like
         # the inability to post to the topic
 
-        result = bot.reopen_forum_topic(
+        result = await bot.reopen_forum_topic(
             chat_id=forum_group_id,
             message_thread_id=message_thread_id,
         )
         assert result is True, "Failed to reopen forum topic"
 
-    @pytest.mark.xfail(reason="Can fail due to race conditions in GH actions CI")
-    def test_unpin_all_forum_topic_messages(self, bot, forum_group_id, real_topic):
-        message_thread_id = real_topic.message_thread_id
-
-        msgs = [
-            (
-                bot.send_message(
-                    chat_id=forum_group_id, text=TEST_MSG_TEXT, message_thread_id=message_thread_id
-                )
-            ).pin()
-            for _ in range(2)
-        ]
-
-        assert all(msgs) is True, "Message(s) were not pinned"
-
+    async def test_unpin_all_forum_topic_messages(self, bot, forum_group_id, real_topic):
         # We need 2 or more pinned msgs for this to work, else we get Chat_not_modified error
-        result = bot.unpin_all_forum_topic_messages(
-            chat_id=forum_group_id, message_thread_id=message_thread_id
-        )
+        message_thread_id = real_topic.message_thread_id
+        pin_msg_tasks = set()
+
+        awaitables = {
+            bot.send_message(forum_group_id, TEST_MSG_TEXT, message_thread_id=message_thread_id)
+            for _ in range(2)
+        }
+        for coro in asyncio.as_completed(awaitables):
+            msg = await coro
+            pin_msg_tasks.add(asyncio.create_task(msg.pin()))
+
+        assert all([await task for task in pin_msg_tasks]) is True, "Message(s) were not pinned"
+
+        result = await bot.unpin_all_forum_topic_messages(forum_group_id, message_thread_id)
         assert result is True, "Failed to unpin all the messages in forum topic"
 
+    async def test_unpin_all_general_forum_topic_messages(self, bot, forum_group_id):
+        # We need 2 or more pinned msgs for this to work, else we get Chat_not_modified error
+        pin_msg_tasks = set()
 
-@pytest.fixture
+        awaitables = {bot.send_message(forum_group_id, TEST_MSG_TEXT) for _ in range(2)}
+        for coro in asyncio.as_completed(awaitables):
+            msg = await coro
+            pin_msg_tasks.add(asyncio.create_task(msg.pin()))
+
+        assert all([await task for task in pin_msg_tasks]) is True, "Message(s) were not pinned"
+
+        result = await bot.unpin_all_general_forum_topic_messages(forum_group_id)
+        assert result is True, "Failed to unpin all the messages in forum topic"
+
+    async def test_edit_general_forum_topic(self, bot, forum_group_id):
+        result = await bot.edit_general_forum_topic(
+            chat_id=forum_group_id,
+            name=f"GENERAL_{datetime.datetime.now().timestamp()}",
+        )
+        assert result is True, "Failed to edit general forum topic"
+        # no way of checking the edited name, just the boolean result
+
+    async def test_close_reopen_hide_unhide_general_forum_topic(self, bot, forum_group_id):
+        """Since reopening also unhides and hiding also closes, testing (un)hiding and
+        closing/reopening in different tests would mean that the tests have to be executed in
+        a specific order. For stability, we instead test all of them in one test."""
+
+        # We first ensure that the topic is open and visible
+        # Otherwise the tests below will fail
+        try:
+            await bot.reopen_general_forum_topic(chat_id=forum_group_id)
+        except BadRequest as exc:
+            # If the topic is already open, we get BadRequest: Topic_not_modified
+            if "Topic_not_modified" not in exc.message:
+                raise exc
+
+        # first just close, bot don't hide
+        result = await bot.close_general_forum_topic(
+            chat_id=forum_group_id,
+        )
+        assert result is True, "Failed to close general forum topic"
+
+        # then hide
+        result = await bot.hide_general_forum_topic(
+            chat_id=forum_group_id,
+        )
+        assert result is True, "Failed to hide general forum topic"
+
+        # then unhide, but don't reopen
+        result = await bot.unhide_general_forum_topic(
+            chat_id=forum_group_id,
+        )
+        assert result is True, "Failed to unhide general forum topic"
+
+        # finally, reopen
+        # as this also unhides, this should ensure that the topic is open and visible
+        # for the next test run
+        result = await bot.reopen_general_forum_topic(
+            chat_id=forum_group_id,
+        )
+        assert result is True, "Failed to reopen general forum topic"
+
+
+@pytest.fixture(scope="module")
 def topic_created():
     return ForumTopicCreated(name=TEST_TOPIC_NAME, icon_color=TEST_TOPIC_ICON_COLOR)
 
 
-class TestForumTopicCreated:
-    def test_slot_behaviour(self, topic_created, mro_slots):
+class TestForumTopicCreatedWithoutRequest:
+    def test_slot_behaviour(self, topic_created):
         for attr in topic_created.__slots__:
             assert getattr(topic_created, attr, "err") != "err", f"got extra slot '{attr}'"
         assert len(mro_slots(topic_created)) == len(
@@ -266,6 +338,7 @@ class TestForumTopicCreated:
 
         json_dict = {"icon_color": TEST_TOPIC_ICON_COLOR, "name": TEST_TOPIC_NAME}
         action = ForumTopicCreated.de_json(json_dict, bot)
+        assert action.api_kwargs == {}
 
         assert action.icon_color == TEST_TOPIC_ICON_COLOR
         assert action.name == TEST_TOPIC_NAME
@@ -297,8 +370,8 @@ class TestForumTopicCreated:
         assert hash(a) != hash(d)
 
 
-class TestForumTopicClosed:
-    def test_slot_behaviour(self, mro_slots):
+class TestForumTopicClosedWithoutRequest:
+    def test_slot_behaviour(self):
         action = ForumTopicClosed()
         for attr in action.__slots__:
             assert getattr(action, attr, "err") != "err", f"got extra slot '{attr}'"
@@ -306,6 +379,7 @@ class TestForumTopicClosed:
 
     def test_de_json(self):
         action = ForumTopicClosed.de_json({}, None)
+        assert action.api_kwargs == {}
         assert isinstance(action, ForumTopicClosed)
 
     def test_to_dict(self):
@@ -314,8 +388,8 @@ class TestForumTopicClosed:
         assert action_dict == {}
 
 
-class TestForumTopicReopened:
-    def test_slot_behaviour(self, mro_slots):
+class TestForumTopicReopenedWithoutRequest:
+    def test_slot_behaviour(self):
         action = ForumTopicReopened()
         for attr in action.__slots__:
             assert getattr(action, attr, "err") != "err", f"got extra slot '{attr}'"
@@ -323,9 +397,102 @@ class TestForumTopicReopened:
 
     def test_de_json(self):
         action = ForumTopicReopened.de_json({}, None)
+        assert action.api_kwargs == {}
         assert isinstance(action, ForumTopicReopened)
 
     def test_to_dict(self):
         action = ForumTopicReopened()
+        action_dict = action.to_dict()
+        assert action_dict == {}
+
+
+@pytest.fixture(scope="module")
+def topic_edited(emoji_id):
+    return ForumTopicEdited(name=TEST_TOPIC_NAME, icon_custom_emoji_id=emoji_id)
+
+
+class TestForumTopicEdited:
+    def test_slot_behaviour(self, topic_edited):
+        for attr in topic_edited.__slots__:
+            assert getattr(topic_edited, attr, "err") != "err", f"got extra slot '{attr}'"
+        assert len(mro_slots(topic_edited)) == len(set(mro_slots(topic_edited))), "duplicate slot"
+
+    def test_expected_values(self, topic_edited, emoji_id):
+        assert topic_edited.name == TEST_TOPIC_NAME
+        assert topic_edited.icon_custom_emoji_id == emoji_id
+
+    def test_de_json(self, bot, emoji_id):
+        assert ForumTopicEdited.de_json(None, bot=bot) is None
+
+        json_dict = {"name": TEST_TOPIC_NAME, "icon_custom_emoji_id": emoji_id}
+        action = ForumTopicEdited.de_json(json_dict, bot)
+        assert action.api_kwargs == {}
+
+        assert action.name == TEST_TOPIC_NAME
+        assert action.icon_custom_emoji_id == emoji_id
+        # special test since it is mentioned in the docs that icon_custom_emoji_id can be an
+        # empty string
+        json_dict = {"icon_custom_emoji_id": ""}
+        action = ForumTopicEdited.de_json(json_dict, bot)
+        assert not action.icon_custom_emoji_id
+
+    def test_to_dict(self, topic_edited, emoji_id):
+        action_dict = topic_edited.to_dict()
+
+        assert isinstance(action_dict, dict)
+        assert action_dict["name"] == TEST_TOPIC_NAME
+        assert action_dict["icon_custom_emoji_id"] == emoji_id
+
+    def test_equality(self, emoji_id):
+        a = ForumTopicEdited(name=TEST_TOPIC_NAME, icon_custom_emoji_id="")
+        b = ForumTopicEdited(
+            name=TEST_TOPIC_NAME,
+            icon_custom_emoji_id="",
+        )
+        c = ForumTopicEdited(name=f"{TEST_TOPIC_NAME}!", icon_custom_emoji_id=emoji_id)
+        d = ForumTopicEdited(icon_custom_emoji_id="")
+
+        assert a == b
+        assert hash(a) == hash(b)
+
+        assert a != c
+        assert hash(a) != hash(c)
+
+        assert a != d
+        assert hash(a) != hash(d)
+
+
+class TestGeneralForumTopicHidden:
+    def test_slot_behaviour(self):
+        action = GeneralForumTopicHidden()
+        for attr in action.__slots__:
+            assert getattr(action, attr, "err") != "err", f"got extra slot '{attr}'"
+        assert len(mro_slots(action)) == len(set(mro_slots(action))), "duplicate slot"
+
+    def test_de_json(self):
+        action = GeneralForumTopicHidden.de_json({}, None)
+        assert action.api_kwargs == {}
+        assert isinstance(action, GeneralForumTopicHidden)
+
+    def test_to_dict(self):
+        action = GeneralForumTopicHidden()
+        action_dict = action.to_dict()
+        assert action_dict == {}
+
+
+class TestGeneralForumTopicUnhidden:
+    def test_slot_behaviour(self):
+        action = GeneralForumTopicUnhidden()
+        for attr in action.__slots__:
+            assert getattr(action, attr, "err") != "err", f"got extra slot '{attr}'"
+        assert len(mro_slots(action)) == len(set(mro_slots(action))), "duplicate slot"
+
+    def test_de_json(self):
+        action = GeneralForumTopicUnhidden.de_json({}, None)
+        assert action.api_kwargs == {}
+        assert isinstance(action, GeneralForumTopicUnhidden)
+
+    def test_to_dict(self):
+        action = GeneralForumTopicUnhidden()
         action_dict = action.to_dict()
         assert action_dict == {}

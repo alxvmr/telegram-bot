@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2022
+# Copyright (C) 2015-2023
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -19,29 +19,29 @@
 import pytest
 
 from telegram import KeyboardButtonPollType, Poll
+from tests.auxil.slots import mro_slots
 
 
-@pytest.fixture(scope='class')
+@pytest.fixture(scope="module")
 def keyboard_button_poll_type():
-    return KeyboardButtonPollType(TestKeyboardButtonPollType.type)
+    return KeyboardButtonPollType(TestKeyboardButtonPollTypeBase.type)
 
 
-class TestKeyboardButtonPollType:
+class TestKeyboardButtonPollTypeBase:
     type = Poll.QUIZ
 
-    def test_slot_behaviour(self, keyboard_button_poll_type, recwarn, mro_slots):
+
+class TestKeyboardButtonPollTypeWithoutRequest(TestKeyboardButtonPollTypeBase):
+    def test_slot_behaviour(self, keyboard_button_poll_type):
         inst = keyboard_button_poll_type
         for attr in inst.__slots__:
-            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
-        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+            assert getattr(inst, attr, "err") != "err", f"got extra slot '{attr}'"
         assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
-        inst.custom, inst.type = 'should give warning', self.type
-        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_to_dict(self, keyboard_button_poll_type):
         keyboard_button_poll_type_dict = keyboard_button_poll_type.to_dict()
         assert isinstance(keyboard_button_poll_type_dict, dict)
-        assert keyboard_button_poll_type_dict['type'] == self.type
+        assert keyboard_button_poll_type_dict["type"] == self.type
 
     def test_equality(self):
         a = KeyboardButtonPollType(Poll.QUIZ)

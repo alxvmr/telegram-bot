@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # A library that provides a Python interface to the Telegram Bot API
-# Copyright (C) 2015-2022
+# Copyright (C) 2015-2023
 # Leandro Toledo de Souza <devs@python-telegram-bot.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -18,36 +18,46 @@
 # along with this program.  If not, see [http://www.gnu.org/licenses/].
 import pytest
 
-from telegram import KeyboardButton, InlineKeyboardButton, WebAppInfo
-from telegram.keyboardbuttonpolltype import KeyboardButtonPollType
+from telegram import (
+    InlineKeyboardButton,
+    KeyboardButton,
+    KeyboardButtonPollType,
+    KeyboardButtonRequestChat,
+    KeyboardButtonRequestUser,
+    WebAppInfo,
+)
+from tests.auxil.slots import mro_slots
 
 
-@pytest.fixture(scope='class')
+@pytest.fixture(scope="module")
 def keyboard_button():
     return KeyboardButton(
-        TestKeyboardButton.text,
-        request_location=TestKeyboardButton.request_location,
-        request_contact=TestKeyboardButton.request_contact,
-        request_poll=TestKeyboardButton.request_poll,
-        web_app=TestKeyboardButton.web_app,
+        TestKeyboardButtonBase.text,
+        request_location=TestKeyboardButtonBase.request_location,
+        request_contact=TestKeyboardButtonBase.request_contact,
+        request_poll=TestKeyboardButtonBase.request_poll,
+        web_app=TestKeyboardButtonBase.web_app,
+        request_chat=TestKeyboardButtonBase.request_chat,
+        request_user=TestKeyboardButtonBase.request_user,
     )
 
 
-class TestKeyboardButton:
-    text = 'text'
+class TestKeyboardButtonBase:
+    text = "text"
     request_location = True
     request_contact = True
     request_poll = KeyboardButtonPollType("quiz")
     web_app = WebAppInfo(url="https://example.com")
+    request_chat = KeyboardButtonRequestChat(1, True)
+    request_user = KeyboardButtonRequestUser(2)
 
-    def test_slot_behaviour(self, keyboard_button, recwarn, mro_slots):
+
+class TestKeyboardButtonWithoutRequest(TestKeyboardButtonBase):
+    def test_slot_behaviour(self, keyboard_button):
         inst = keyboard_button
         for attr in inst.__slots__:
-            assert getattr(inst, attr, 'err') != 'err', f"got extra slot '{attr}'"
-        assert not inst.__dict__, f"got missing slot(s): {inst.__dict__}"
+            assert getattr(inst, attr, "err") != "err", f"got extra slot '{attr}'"
         assert len(mro_slots(inst)) == len(set(mro_slots(inst))), "duplicate slot"
-        inst.custom, inst.text = 'should give warning', self.text
-        assert len(recwarn) == 1 and 'custom' in str(recwarn[0].message), recwarn.list
 
     def test_expected_values(self, keyboard_button):
         assert keyboard_button.text == self.text
@@ -55,41 +65,63 @@ class TestKeyboardButton:
         assert keyboard_button.request_contact == self.request_contact
         assert keyboard_button.request_poll == self.request_poll
         assert keyboard_button.web_app == self.web_app
+        assert keyboard_button.request_chat == self.request_chat
+        assert keyboard_button.request_user == self.request_user
 
     def test_to_dict(self, keyboard_button):
         keyboard_button_dict = keyboard_button.to_dict()
 
         assert isinstance(keyboard_button_dict, dict)
-        assert keyboard_button_dict['text'] == keyboard_button.text
-        assert keyboard_button_dict['request_location'] == keyboard_button.request_location
-        assert keyboard_button_dict['request_contact'] == keyboard_button.request_contact
-        assert keyboard_button_dict['request_poll'] == keyboard_button.request_poll.to_dict()
-        assert keyboard_button_dict['web_app'] == keyboard_button.web_app.to_dict()
+        assert keyboard_button_dict["text"] == keyboard_button.text
+        assert keyboard_button_dict["request_location"] == keyboard_button.request_location
+        assert keyboard_button_dict["request_contact"] == keyboard_button.request_contact
+        assert keyboard_button_dict["request_poll"] == keyboard_button.request_poll.to_dict()
+        assert keyboard_button_dict["web_app"] == keyboard_button.web_app.to_dict()
+        assert keyboard_button_dict["request_chat"] == keyboard_button.request_chat.to_dict()
+        assert keyboard_button_dict["request_user"] == keyboard_button.request_user.to_dict()
 
     def test_de_json(self, bot):
         json_dict = {
-            'text': self.text,
-            'request_location': self.request_location,
-            'request_contact': self.request_contact,
-            'request_poll': self.request_poll.to_dict(),
-            'web_app': self.web_app.to_dict(),
+            "text": self.text,
+            "request_location": self.request_location,
+            "request_contact": self.request_contact,
+            "request_poll": self.request_poll.to_dict(),
+            "web_app": self.web_app.to_dict(),
+            "request_chat": self.request_chat.to_dict(),
+            "request_user": self.request_user.to_dict(),
         }
 
         inline_keyboard_button = KeyboardButton.de_json(json_dict, None)
+        assert inline_keyboard_button.api_kwargs == {}
         assert inline_keyboard_button.text == self.text
         assert inline_keyboard_button.request_location == self.request_location
         assert inline_keyboard_button.request_contact == self.request_contact
         assert inline_keyboard_button.request_poll == self.request_poll
         assert inline_keyboard_button.web_app == self.web_app
+        assert inline_keyboard_button.request_chat == self.request_chat
+        assert inline_keyboard_button.request_user == self.request_user
 
         none = KeyboardButton.de_json({}, None)
         assert none is None
 
     def test_equality(self):
-        a = KeyboardButton('test', request_contact=True)
-        b = KeyboardButton('test', request_contact=True)
-        c = KeyboardButton('Test', request_location=True)
-        d = InlineKeyboardButton('test', callback_data='test')
+        a = KeyboardButton("test", request_contact=True)
+        b = KeyboardButton("test", request_contact=True)
+        c = KeyboardButton("Test", request_location=True)
+        d = KeyboardButton("Test", web_app=WebAppInfo(url="https://ptb.org"))
+        e = InlineKeyboardButton("test", callback_data="test")
+        f = KeyboardButton(
+            "test",
+            request_contact=True,
+            request_chat=KeyboardButtonRequestChat(1, False),
+            request_user=KeyboardButtonRequestUser(2),
+        )
+        g = KeyboardButton(
+            "test",
+            request_contact=True,
+            request_chat=KeyboardButtonRequestChat(1, False),
+            request_user=KeyboardButtonRequestUser(2),
+        )
 
         assert a == b
         assert hash(a) == hash(b)
@@ -99,3 +131,12 @@ class TestKeyboardButton:
 
         assert a != d
         assert hash(a) != hash(d)
+
+        assert a != e
+        assert hash(a) != hash(e)
+
+        assert a != f
+        assert hash(a) != hash(f)
+
+        assert f == g
+        assert hash(f) == hash(g)
